@@ -1,0 +1,49 @@
+# Compiled benchmark binaries. Every .cu builds to a binary named after it, so
+# the Makefiles drop executables right next to their sources.
+*.o
+*.obj
+*.exe
+*.out
+
+# One binary per source, named after the source stem and therefore extensionless.
+# Listed explicitly rather than by a wildcard so new sources are not ignored by
+# accident; `make clean` removes the same set.
+gemm/01-naive/naive_gemm
+gemm/01-naive/naive_gemm_swapped
+gemm/02-tiled/tiled_gemm
+gemm/03-register-tiling/thread_tile_1x4_contiguous
+gemm/03-register-tiling/thread_tile_1x4_strided
+gemm/03-register-tiling/thread_tile_4x4
+gemm/03-register-tiling/thread_tile_4x4_transA
+gemm/03-register-tiling/thread_tile_4x4_transA_pad
+gemm/04-tensor-core/tensor_core_gemm_shared
+gemm/cublas-gemm/cublas_sgemm
+intro/device-query/device_query
+intro/divergence/divergence
+intro/gray-to-scale/gray_to_scale
+intro/matadd/matadd
+intro/vecadd/vecadd
+llm-inference/decoder/decoder
+llm-inference/graph-launch/graph_launch
+llm-inference/normalization/rms_norm
+llm-inference/normalization/softmax
+llm-inference/quantized-gemv/w8_gemv
+memory-access/chase/chase
+memory-access/stride/stride
+memory-access/transfer/transfer
+memory-access/transpose/transpose
+primitives/histogram/histogram
+primitives/reduction/reduction
+primitives/scan/scan
+
+# Output written by the gray-to-scale benchmark
+intro/gray-to-scale
+
+# figure
+fig
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
