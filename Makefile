@@ -22,7 +22,7 @@ BENCH_DIRS := gemm/01-naive \
               llm-inference/decoder \
               llm-inference/graph-launch \
               llm-inference/quantized-gemv \
-              llm-inference/softmax \
+              llm-inference/normalization \
               memory-access/chase \
               memory-access/stride \
               memory-access/transfer \
