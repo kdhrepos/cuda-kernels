@@ -1,5 +1,6 @@
 #include "../../common/cuda_check.cuh"
 #include "../../common/gemm_report.cuh"
+#include "../../common/gemm_tile.cuh"
 
 #include <cuda_runtime.h>
 #include <iostream>
@@ -54,27 +55,37 @@ __global__ void coarsenedGemm(
     float a[TM] = {0.0f};
     float b[TN] = {0.0f};
 
-    int ty = threadIdx.y;
-    int tx = threadIdx.x;
-    int bx = blockIdx.x;
-    int by = blockIdx.y;
+    const int ty = threadIdx.y;
+    const int tx = threadIdx.x;
 
-    for (int p=0; p<(K+TILE-1)/TILE; p++) {
+    // This block owns TILE*TM rows and TILE*TN columns of C.
+    const int blockRow = blockIdx.y * TILE * TM;
+    const int blockCol = blockIdx.x * TILE * TN;
+
+    for (int p=0; p<gemmTiles(K, TILE); p++) {
+        const int kTile = p * TILE;   // first k of this step
+
+        // Load phase. The destination subscripts are swapped against the source
+        // index -- that swap IS the transpose, and it is why the compute phase
+        // below can read a column of A as a row of AsT.
         for (int j=0; j<TM; j++)
-            AsT[tx][ty + j*TILE] = ((ty + j*TILE + by*TILE*TM < M) && (tx + p*TILE < K)) ? 
-            A[(ty + j*TILE + by*TILE*TM)*K + tx + p*TILE] : 0.0f;
+            AsT[tx][ty + j*TILE] =
+                gemmLoadOrZero(A, K, blockRow + ty + j*TILE, kTile + tx, M, K);
 
         for (int j=0; j<TN; j++)
-            Bs[ty][tx + j*TILE] = ((ty + p*TILE < K) && (tx + j*TILE + bx*TILE*TN < N)) ? 
-            B[(ty+p*TILE)*N + tx + j*TILE + bx*TILE*TN] : 0.0f;
+            Bs[ty][tx + j*TILE] =
+                gemmLoadOrZero(B, N, kTile + ty, blockCol + tx + j*TILE, K, N);
         __syncthreads();
 
+        // Compute phase: a different mapping of the same thread. It owns a
+        // contiguous TM x TN block of C, and thanks to the transpose both a[]
+        // and b[] now come from consecutive shared-memory addresses.
 #pragma unroll
         for (int k=0; k<TILE; k++) {
             for (int i=0; i<TM; i++)
-                a[i] = AsT[k][i + ty*TM];
+                a[i] = AsT[k][ty*TM + i];
             for (int i=0; i<TN; i++)
-                b[i] = Bs[k][i + tx*TN];
+                b[i] = Bs[k][tx*TN + i];
 
             for (int i=0; i<TM; i++)
                 for (int j=0; j<TN; j++)
@@ -83,15 +94,13 @@ __global__ void coarsenedGemm(
         __syncthreads();
     }
 
-    for (int i=0; i<TM; i++) {
-        for (int j=0; j<TN; j++) {
-            int outRow = ty*TM + i + by*TILE*TM;
-            int outCol = tx*TN + j + bx*TILE*TN;
+    // Stores follow the compute mapping, not the load mapping.
+    const int threadRow = blockRow + ty * TM;
+    const int threadCol = blockCol + tx * TN;
 
-            if (outRow < M && outCol < N) 
-                C[outRow*N + outCol] = acc[i][j];
-        }
-    }
+    for (int i=0; i<TM; i++)
+        for (int j=0; j<TN; j++)
+            gemmStoreIfInside(C, N, threadRow + i, threadCol + j, M, N, acc[i][j]);
 }
 
 int main(int argc, char** argv) {
@@ -133,9 +142,9 @@ int main(int argc, char** argv) {
     dim3 threadsPerBlock(TILE, TILE);
     dim3 blocksPerGrid((TILE*TN+N-1)/(TILE*TN), (TILE*TM+M-1)/(TILE*TM));
 
-    GemmReport rep("coarsened_2d_tiled_transposed_gemm", M, N, K, REPS);
+    GemmReport rep("thread_tile_4x4_transA", M, N, K, REPS);
     rep.setLaunch(blocksPerGrid, threadsPerBlock);
-    int variant = rep.addVariant("2d-tr");
+    int variant = rep.addVariant("4x4-transA");
 
     for (int i=0; i<=REPS; i++) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));

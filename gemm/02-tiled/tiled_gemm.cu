@@ -1,5 +1,6 @@
 #include "../../common/cuda_check.cuh"
 #include "../../common/gemm_report.cuh"
+#include "../../common/gemm_tile.cuh"
 
 #include <cuda_runtime.h>
 #include <iostream>
@@ -29,25 +30,29 @@ __global__ void tiledGemm(
     __shared__ float As[TILE][TILE];
     __shared__ float Bs[TILE][TILE];
     
-    int row = blockDim.y * blockIdx.y + threadIdx.y;
-    int col = blockDim.x * blockIdx.x + threadIdx.x;
-    int ty = threadIdx.y;
-    int tx = threadIdx.x;
+    const int ty = threadIdx.y;
+    const int tx = threadIdx.x;
+
+    // One element of C per thread, so the thread's row and column are its
+    // position in the whole matrix.
+    const int row = blockDim.y * blockIdx.y + ty;
+    const int col = blockDim.x * blockIdx.x + tx;
 
     float sum = 0.0f;
-    for (int p = 0; p < (K+TILE-1)/TILE; p++) {
-        As[ty][tx] = ((p*TILE+tx < K) && (row < M)) ? A[row*K + p*TILE+tx] : 0.0f;
-        Bs[ty][tx] = ((ty + p*TILE < K) && (col < N)) ? B[(ty+p*TILE)*N + col] : 0.0f;
+    for (int p = 0; p < gemmTiles(K, TILE); p++) {
+        const int kTile = p * TILE;   // first k of this step
+
+        As[ty][tx] = gemmLoadOrZero(A, K, row,         kTile + tx, M, K);
+        Bs[ty][tx] = gemmLoadOrZero(B, N, kTile + ty,  col,        K, N);
         __syncthreads();
 
-        for (int i = 0; i < TILE; i++) {
-            sum += As[ty][i]*Bs[i][tx];
+        for (int k = 0; k < TILE; k++) {
+            sum += As[ty][k]*Bs[k][tx];
         }
         __syncthreads();
     }
 
-    if (row < M && col < N) 
-        C[row*N+col] = sum;
+    gemmStoreIfInside(C, N, row, col, M, N, sum);
 }
 
 void initMat(

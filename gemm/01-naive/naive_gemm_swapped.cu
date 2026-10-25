@@ -20,15 +20,18 @@ __global__ void naiveGemm(int m,
                         float* a,
                         float* b,
                         float* c) {
-    int tx=blockDim.x*blockIdx.x+threadIdx.x;
-    int ty=blockDim.y*blockIdx.y+threadIdx.y;
+    // Swapped against naive_gemm on purpose: here x walks the ROWS of C and y
+    // the columns, so neighbouring threads in a warp step down a column of C
+    // with stride n instead of along a row. Same arithmetic, uncoalesced.
+    const int row = blockDim.x*blockIdx.x + threadIdx.x;
+    const int col = blockDim.y*blockIdx.y + threadIdx.y;
 
-    if (ty < n && tx < m) {
-        float sum=0.0;
+    if (row < m && col < n) {
+        float sum=0.0f;
         for (int i=0; i<k; i++) {
-            sum+=a[tx*k+i]*b[i*n+ty];
+            sum += a[(size_t)row*k + i] * b[(size_t)i*n + col];
         }
-        c[tx*n+ty]=sum;
+        c[(size_t)row*n + col] = sum;
     }
 }
 

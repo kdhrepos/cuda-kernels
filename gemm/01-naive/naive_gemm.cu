@@ -22,15 +22,17 @@ __global__ void naiveGemm(
     float* b,
     float* c
 ) {
-    int tx=blockDim.x*blockIdx.x+threadIdx.x;
-    int ty=blockDim.y*blockIdx.y+threadIdx.y;
+    // x walks the columns of C and y walks the rows, so threads next to each
+    // other in a warp read consecutive elements of a row of B.
+    const int row = blockDim.y*blockIdx.y + threadIdx.y;
+    const int col = blockDim.x*blockIdx.x + threadIdx.x;
 
-    if (ty < m && tx < n) {
-        float sum=0.0;
+    if (row < m && col < n) {
+        float sum=0.0f;
         for (int i=0; i<k; i++) {
-            sum+=a[ty*k+i]*b[i*n+tx];
+            sum += a[(size_t)row*k + i] * b[(size_t)i*n + col];
         }
-        c[ty*n+tx]=sum;
+        c[(size_t)row*n + col] = sum;
     }
 }
 

@@ -18,6 +18,8 @@
 #     OPT        optimisation level            (default -O3)
 #     STD        C++ standard                  (default c++14, what CUDA 11 takes)
 #     REPS       measured iterations per run   (unset: each source defaults to 10)
+#     GEMM_CHECK_CORNER  how deep the GEMM CPU check goes (default 1024)
+#     DEFINES    extra -D macros, e.g. DEFINES='TILE=32'
 #     SRCS       sources to build              (default: every .cu here)
 #     LDLIBS     extra libraries to link
 #     NVCCFLAGS_EXTRA  anything else to pass through
@@ -30,9 +32,17 @@ OPT  ?= -O3
 STD  ?= c++14
 
 NVCCFLAGS ?= $(OPT) -arch=$(ARCH) -std=$(STD)
+
+# Tunables that exist in the sources as -D overrides. Named here so `make REPS=50`
+# and `make GEMM_CHECK_CORNER=64` work, with DEFINES as the general escape hatch:
+#   make DEFINES='TILE=32 REPS=5'
 ifdef REPS
 NVCCFLAGS += -DREPS=$(REPS)
 endif
+ifdef GEMM_CHECK_CORNER
+NVCCFLAGS += -DGEMM_CHECK_CORNER=$(GEMM_CHECK_CORNER)
+endif
+NVCCFLAGS += $(addprefix -D,$(DEFINES))
 NVCCFLAGS += $(NVCCFLAGS_EXTRA)
 
 SRCS    ?= $(wildcard *.cu)

@@ -1,5 +1,6 @@
 #include "../../common/cuda_check.cuh"
 #include "../../common/gemm_report.cuh"
+#include "../../common/gemm_tile.cuh"
 
 #include <iostream>
 #include <string>
@@ -46,59 +47,74 @@ __global__ void tensorCoreGemm(
     const __half *B,
     float *C
 ) {
-    __shared__ __align__(32) __half As[32][16+8], Bs[16][32+8]; // padding +8 half
-    __shared__ float Cs[4][16][16];   // staging tile for partial tiles, one per warp
-    int warpId = threadIdx.x / 32;
-    int wr = warpId/2, wc = warpId%2;
+    // One wmma fragment is FRAG x FRAG; the four warps of this block cover a
+    // BLOCK_TILE x BLOCK_TILE square of C as a 2x2 grid of fragments.
+    const int FRAG       = 16;
+    const int BLOCK_TILE = 32;
+    const int WARPS      = 4;
 
-    int tid = threadIdx.x;
-    int by = blockIdx.y;
-    int bx = blockIdx.x;
+    // The +8 pad keeps a warp's fragment loads off a single bank.
+    __shared__ __align__(32) __half As[BLOCK_TILE][FRAG+8], Bs[FRAG][BLOCK_TILE+8];
+    __shared__ float Cs[WARPS][FRAG][FRAG];   // staging tile, one per warp
+
+    const int tid    = threadIdx.x;
+    const int warpId = tid / 32;
+    const int wr = warpId/2, wc = warpId%2;   // this warp's fragment in the 2x2
+
+    // This block owns BLOCK_TILE rows and BLOCK_TILE columns of C.
+    const int blockRow = blockIdx.y * BLOCK_TILE;
+    const int blockCol = blockIdx.x * BLOCK_TILE;
 
     wmma::fragment<wmma::accumulator, 16,16,16, float> c;
     wmma::fill_fragment(c, 0.0f);
-    for (int p = 0; p < (16+K-1)/16; ++p) {
+    for (int p = 0; p < gemmTiles(K, FRAG); ++p) {
+        const int kTile = p * FRAG;   // first k of this step
+
+        // Load phase: the whole block cooperates, so a thread's position here
+        // has nothing to do with the fragment its warp will compute. Rows are
+        // covered in strides (8 for As, 4 for Bs) to keep each read coalesced.
         for (int j=0; j<4; j++) {
-            int r0 = tid/16 + j*8; // position of a warp in the tile A (row)
-            int aRow = r0 + by*32, aCol = tid%16 + p*16; // position in the thread block 
-            As[r0][tid%16] = ((aRow < M) && (aCol < K)) ? A[(aRow)*K + aCol] : __float2half(0.0f);
-            
-            int r1 = tid/32 + j*4; // position of a warp in the tile B (row)
-            int bRow = r1 + p*16, bCol = tid%32 + bx*32; // position in the thread block
-            Bs[r1][tid%32] = ((bRow < K) && (bCol < N)) ? B[(bRow)*N + bCol] : __float2half(0.0f);
+            const int asRow = tid/16 + j*8;
+            As[asRow][tid%16] =
+                gemmLoadOrZero(A, K, blockRow + asRow, kTile + tid%16, M, K);
+
+            const int bsRow = tid/32 + j*4;
+            Bs[bsRow][tid%32] =
+                gemmLoadOrZero(B, N, kTile + bsRow, blockCol + tid%32, K, N);
         }
         __syncthreads();
 
         wmma::fragment<wmma::matrix_a, 16,16,16, __half, wmma::row_major> a;
         wmma::fragment<wmma::matrix_b, 16,16,16, __half, wmma::row_major> b;
-        wmma::load_matrix_sync(a, &As[wr*16][0], 16+8);
-        wmma::load_matrix_sync(b, &Bs[0][wc*16], 32+8);
+        // Compute phase: now the warp's own (wr, wc) selects its fragment.
+        wmma::load_matrix_sync(a, &As[wr*FRAG][0], FRAG+8);
+        wmma::load_matrix_sync(b, &Bs[0][wc*FRAG], BLOCK_TILE+8);
         wmma::mma_sync(c, a, b, c);
         __syncthreads();
     }
 
-    int cRow = by*32 + wr*16;
-    int cCol = bx*32 + wc*16;
+    // Where this warp's fragment lands in C.
+    const int cRow = blockRow + wr*FRAG;
+    const int cCol = blockCol + wc*FRAG;
 
     // Storing straight into C needs two things of N. The tile must fit, because
     // store_matrix_sync writes the full 16 columns of every row and anything past
     // column N would land in the next row of C. And N, the leading dimension, must
     // be a multiple of 16 bytes -- 4 floats -- or the store is misaligned and
     // writes garbage from its second row on.
-    if (cRow + 16 <= M && cCol + 16 <= N && N % 4 == 0) {
-        wmma::store_matrix_sync(&C[cRow*N + cCol], c, N, wmma::mem_row_major);
+    if (cRow + FRAG <= M && cCol + FRAG <= N && N % 4 == 0) {
+        wmma::store_matrix_sync(&C[(size_t)cRow*N + cCol], c, N, wmma::mem_row_major);
     } else {
-        // Otherwise stage the tile at ldm = 16 (64 bytes, properly aligned) and
-        // copy back only the part that belongs to C.
-        wmma::store_matrix_sync(&Cs[warpId][0][0], c, 16, wmma::mem_row_major);
+        // Otherwise stage the tile at ldm = FRAG (64 bytes, properly aligned)
+        // and copy back only the part that belongs to C.
+        wmma::store_matrix_sync(&Cs[warpId][0][0], c, FRAG, wmma::mem_row_major);
         __syncwarp();
 
-        int lane = threadIdx.x % 32;
-        for (int idx = lane; idx < 16*16; idx += 32) {
-            int r = idx / 16;
-            int cc = idx % 16;
-            if (cRow + r < M && cCol + cc < N)
-                C[(cRow + r)*N + cCol + cc] = Cs[warpId][r][cc];
+        const int lane = tid % 32;
+        for (int idx = lane; idx < FRAG*FRAG; idx += 32) {
+            const int r  = idx / FRAG;
+            const int cc = idx % FRAG;
+            gemmStoreIfInside(C, N, cRow + r, cCol + cc, M, N, Cs[warpId][r][cc]);
         }
     }
 }

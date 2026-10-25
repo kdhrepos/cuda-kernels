@@ -1,5 +1,6 @@
 #include "../../common/cuda_check.cuh"
 #include "../../common/gemm_report.cuh"
+#include "../../common/gemm_tile.cuh"
 
 #include <cuda_runtime.h>
 #include <iostream>
@@ -35,7 +36,7 @@ void initMat(
 }
 
 
-__global__ void coarsenedGemm(
+__global__ void thread_tile_1x4_strided_gemm(
     int M,
     int N,
     int K,
@@ -48,34 +49,40 @@ __global__ void coarsenedGemm(
 
     float sum[TN] = {0.0f};
 
-    int row = blockDim.y * blockIdx.y + threadIdx.y;
-    int col = blockDim.x * blockIdx.x + threadIdx.x;
-    int ty = threadIdx.y;
-    int tx = threadIdx.x;
-    int bx = blockIdx.x;
+    const int ty = threadIdx.y;
+    const int tx = threadIdx.x;
 
-    for (int p=0; p<(K+TILE-1)/TILE; p++) {
-        As[ty][tx] = ((p*TILE+tx < K) && (row < M)) ? A[row*K + p*TILE+tx] : 0.0f;
-        
+    // This block owns TILE rows and TILE*TN columns of C.
+    const int blockCol = blockIdx.x * TILE * TN;
+    const int row      = blockDim.y * blockIdx.y + ty;   // one row per thread
+
+    for (int p=0; p<gemmTiles(K, TILE); p++) {
+        const int kTile = p * TILE;   // first k of this step
+
+        As[ty][tx] = gemmLoadOrZero(A, K, row, kTile + tx, M, K);
+
+        // Load phase: identical to the contiguous variant -- TN chunks TILE
+        // apart, one coalesced read each.
         for (int j=0; j<TN; j++)
-            Bs[ty][tx + j*TILE] = ((tx + j*TILE + bx*TILE*TN < N) && (ty+p*TILE < K)) ? B[(ty+p*TILE)*N + tx + j*TILE + bx*TILE*TN] : 0.0f;
+            Bs[ty][j*TILE + tx] =
+                gemmLoadOrZero(B, N, kTile + ty, blockCol + j*TILE + tx, K, N);
         __syncthreads();
 
-        for (int i=0; i<TILE; i++) {
-            float a = As[ty][i];
+        for (int k=0; k<TILE; k++) {
+            const float a = As[ty][k];   // reused from a register across TN
 
-            for (int j=0; j<TN; j++) 
-                sum[j] += a * Bs[i][tx + j*TILE];
+            // Compute phase: this is the whole difference from the contiguous
+            // variant. This thread's TN columns are TILE apart rather than
+            // side by side, so its shared reads are strided.
+            for (int j=0; j<TN; j++)
+                sum[j] += a * Bs[k][j*TILE + tx];
         }
         __syncthreads();
     }
 
-    for (int i=0; i<TN; i++) {
-        int outCol = tx + TILE*i + blockDim.x*blockIdx.x*TN;
-
-        if (row < M && outCol < N) 
-            C[row * N + outCol] = sum[i];
-    }
+    // Stores follow the same strided mapping the compute phase used.
+    for (int j=0; j<TN; j++)
+        gemmStoreIfInside(C, N, row, blockCol + j*TILE + tx, M, N, sum[j]);
 }
 
 int main(int argc, char** argv) {
@@ -117,13 +124,13 @@ int main(int argc, char** argv) {
     dim3 threadsPerBlock(TILE, TILE);
     dim3 blocksPerGrid((TILE*TN+N-1)/(TILE*TN), (TILE+M-1)/TILE);
 
-    GemmReport rep("coarsened_gemm_a2", M, N, K, REPS);
+    GemmReport rep("thread_tile_1x4_strided", M, N, K, REPS);
     rep.setLaunch(blocksPerGrid, threadsPerBlock);
-    int variant = rep.addVariant("a2");
+    int variant = rep.addVariant("1x4-strided");
 
     for (int i=0; i<=REPS; i++) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
-        coarsenedGemm<<<blocksPerGrid, threadsPerBlock>>>(M, N, K, d_a, d_b, d_c);
+        thread_tile_1x4_strided_gemm<<<blocksPerGrid, threadsPerBlock>>>(M, N, K, d_a, d_b, d_c);
         CHECK_LAST_CUDA_ERROR();
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));
