@@ -42,6 +42,9 @@ intro/gray-to-scale
 # figure
 fig
 
+# csv files
+*.csv
+
 # Editor and OS noise
 .vscode/
 .idea/

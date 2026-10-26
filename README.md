@@ -36,15 +36,18 @@ Every binary prints one CSV row per variant when given `--csv`:
 ./gemm/01-naive/naive_gemm 16 16 2048 2048 2048    # bx by M N K
 ```
 
-## Sweeping sizes
+## Collecting results
+
+Each benchmark folder has a `run.sh` that runs its binaries with `--csv` and
+the arguments to measure. Edit it to change sizes or shapes.
+`tools/sweep.py` runs them and saves the output as
+`results/<group>/<kernel>/<kernel>.csv`.
 
 ```bash
-tools/sweep.py -s 512,1024,2048,4096 -a '{s} {s} {s}' --out out.csv gemm/02-tiled/tiled_gemm
+tools/sweep.py                    # every run.sh
+tools/sweep.py gemm               # one group
+tools/sweep.py gemm/02-tiled      # one kernel
 ```
-
-- `-a`: argument template; `{s}` is replaced by each size
-- `-m`: metric to pivot into the printed table (`gflops`, `avg_ms`, ...)
-- `--out`: also write every raw CSV row
 
 Block-shape comparison for the naive GEMM: `gemm/01-naive/sweep_block.sh`.
 
