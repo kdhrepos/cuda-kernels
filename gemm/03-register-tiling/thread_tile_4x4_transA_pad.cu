@@ -25,38 +25,24 @@
 #define TN 4
 #endif
 
-
-
-void initMat(
-    int row, 
-    int col, 
-    float* mat) 
-{
-    for (int r=0; r<row; r++) {
-        for (int c=0; c<col; c++) {
-            mat[r*col + c] = (float)(rand() % 10);
+void initMat(int row, int col, float* mat) {
+    for (int r = 0; r < row; r++) {
+        for (int c = 0; c < col; c++) {
+            mat[r * col + c] = (float)(rand() % 10);
         }
     }
 }
 
-
-__global__ void coarsenedGemm(
-    int M,
-    int N,
-    int K,
-    float* A,
-    float* B,
-    float* C
-) {
+__global__ void coarsenedGemm(int M, int N, int K, float* A, float* B, float* C) {
     // AsT is A^T for this tile. The +4 pad shifts each row off the 32-bank
     // boundary, so the TM reads a thread makes down one AsT column land in
     // different banks instead of all colliding.
-    __shared__ float AsT[TILE][TILE*TM + 4];
-    __shared__ float Bs[TILE][TILE*TN];
+    __shared__ float AsT[TILE][TILE * TM + 4];
+    __shared__ float Bs[TILE][TILE * TN];
 
     float acc[TM][TN] = {0.0f};
-    float a[TM] = {0.0f};
-    float b[TN] = {0.0f};
+    float a[TM]       = {0.0f};
+    float b[TN]       = {0.0f};
 
     const int ty = threadIdx.y;
     const int tx = threadIdx.x;
@@ -65,31 +51,28 @@ __global__ void coarsenedGemm(
     const int blockRow = blockIdx.y * TILE * TM;
     const int blockCol = blockIdx.x * TILE * TN;
 
-    for (int p=0; p<gemmTiles(K, TILE); p++) {
-        const int kTile = p * TILE;   // first k of this step
+    for (int p = 0; p < gemmTiles(K, TILE); p++) {
+        const int kTile = p * TILE;  // first k of this step
 
         // Load phase. The swapped destination subscripts are the transpose.
-        for (int j=0; j<TM; j++)
-            AsT[tx][ty + j*TILE] =
-                gemmLoadOrZero(A, K, blockRow + ty + j*TILE, kTile + tx, M, K);
+        for (int j = 0; j < TM; j++)
+            AsT[tx][ty + j * TILE] =
+                gemmLoadOrZero(A, K, blockRow + ty + j * TILE, kTile + tx, M, K);
 
-        for (int j=0; j<TN; j++)
-            Bs[ty][tx + j*TILE] =
-                gemmLoadOrZero(B, N, kTile + ty, blockCol + tx + j*TILE, K, N);
+        for (int j = 0; j < TN; j++)
+            Bs[ty][tx + j * TILE] =
+                gemmLoadOrZero(B, N, kTile + ty, blockCol + tx + j * TILE, K, N);
         __syncthreads();
 
         // Compute phase: a different mapping of the same thread, owning a
         // contiguous TM x TN block of C.
 #pragma unroll
-        for (int k=0; k<TILE; k++) {
-            for (int i=0; i<TM; i++)
-                a[i] = AsT[k][ty*TM + i];
-            for (int i=0; i<TN; i++)
-                b[i] = Bs[k][tx*TN + i];
+        for (int k = 0; k < TILE; k++) {
+            for (int i = 0; i < TM; i++) a[i] = AsT[k][ty * TM + i];
+            for (int i = 0; i < TN; i++) b[i] = Bs[k][tx * TN + i];
 
-            for (int i=0; i<TM; i++)
-                for (int j=0; j<TN; j++)
-                    acc[i][j] += a[i] * b[j];
+            for (int i = 0; i < TM; i++)
+                for (int j = 0; j < TN; j++) acc[i][j] += a[i] * b[j];
         }
         __syncthreads();
     }
@@ -98,8 +81,8 @@ __global__ void coarsenedGemm(
     const int threadRow = blockRow + ty * TM;
     const int threadCol = blockCol + tx * TN;
 
-    for (int i=0; i<TM; i++)
-        for (int j=0; j<TN; j++)
+    for (int i = 0; i < TM; i++)
+        for (int j = 0; j < TN; j++)
             gemmStoreIfInside(C, N, threadRow + i, threadCol + j, M, N, acc[i][j]);
 }
 
@@ -116,22 +99,22 @@ int main(int argc, char** argv) {
         K = std::stoi(argv[3]);
     }
 
-    size_t size_a=sizeof(float)*M*K;
-    size_t size_b=sizeof(float)*K*N;
-    size_t size_c=sizeof(float)*M*N;
+    size_t size_a = sizeof(float) * M * K;
+    size_t size_b = sizeof(float) * K * N;
+    size_t size_c = sizeof(float) * M * N;
 
-    float *h_a=(float *)malloc(size_a);
-    float *h_b=(float *)malloc(size_b);
-    float *h_c=(float *)malloc(size_c);
+    float* h_a = (float*)malloc(size_a);
+    float* h_b = (float*)malloc(size_b);
+    float* h_c = (float*)malloc(size_c);
 
     initMat(M, K, h_a);
     initMat(K, N, h_b);
-    
+
     float *d_a, *d_b, *d_c;
     CHECK_CUDA_ERROR(cudaMalloc(&d_a, size_a));
     CHECK_CUDA_ERROR(cudaMalloc(&d_b, size_b));
     CHECK_CUDA_ERROR(cudaMalloc(&d_c, size_c));
-    
+
     CHECK_CUDA_ERROR(cudaMemcpy(d_a, h_a, size_a, cudaMemcpyHostToDevice));
     CHECK_CUDA_ERROR(cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice));
 
@@ -140,23 +123,23 @@ int main(int argc, char** argv) {
     CHECK_CUDA_ERROR(cudaEventCreate(&kernelEnd));
 
     dim3 threadsPerBlock(TILE, TILE);
-    dim3 blocksPerGrid((TILE*TN+N-1)/(TILE*TN), (TILE*TM+M-1)/(TILE*TM));
+    dim3 blocksPerGrid((TILE * TN + N - 1) / (TILE * TN), (TILE * TM + M - 1) / (TILE * TM));
 
     GemmReport rep("thread_tile_4x4_transA_pad", M, N, K, REPS);
     rep.setLaunch(blocksPerGrid, threadsPerBlock);
     int variant = rep.addVariant("4x4-transA-pad");
 
-    for (int i=0; i<=REPS; i++) {
+    for (int i = 0; i <= REPS; i++) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
         coarsenedGemm<<<blocksPerGrid, threadsPerBlock>>>(M, N, K, d_a, d_b, d_c);
         CHECK_LAST_CUDA_ERROR();
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));
 
-        float kernelTime=0.0;
+        float kernelTime = 0.0;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, kernelStart, kernelEnd));
         // i == 0 is the warm-up: verified, then thrown away.
-        if (i==0) {
+        if (i == 0) {
             CHECK_CUDA_ERROR(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost));
             rep.setCheck(variant, gemmCheckCpu(M, N, K, h_a, h_b, h_c));
         } else {

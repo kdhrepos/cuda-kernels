@@ -16,16 +16,10 @@
 #define TB_SIZE 1556
 #define SM_NUM 82
 
-
-
 #define NUM_BIN 256
 
-__global__ void global_histogram(
-    int N,
-    unsigned char *vec,
-    unsigned int *bin
-) {
-    int tid = blockDim.x*blockIdx.x + threadIdx.x;
+__global__ void global_histogram(int N, unsigned char* vec, unsigned int* bin) {
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (tid < N) {
         unsigned char v = vec[tid];
@@ -33,24 +27,21 @@ __global__ void global_histogram(
     }
 }
 
-__global__ void shared_histogram(
-    int N,
-    unsigned char *vec,
-    unsigned int *bin
-) {
-    int tx = threadIdx.x;
+__global__ void shared_histogram(int N, unsigned char* vec, unsigned int* bin) {
+    int tx         = threadIdx.x;
     int block_size = blockDim.x;
-    int block_idx = blockIdx.x;
-    int grid_size = gridDim.x;
+    int block_idx  = blockIdx.x;
+    int grid_size  = gridDim.x;
 
-    int elems_per_thread = (N + grid_size*block_size - 1) / (grid_size*block_size); // elements per thread
+    int elems_per_thread =
+        (N + grid_size * block_size - 1) / (grid_size * block_size);  // elements per thread
 
     __shared__ unsigned int bin_s[NUM_BIN];
     bin_s[tx] = 0;
     __syncthreads();
 
     for (int i = 0; i < elems_per_thread; i++) {
-        int idx = block_size*grid_size*i + block_size*block_idx + tx;
+        int idx = block_size * grid_size * i + block_size * block_idx + tx;
 
         if (idx < N) {
             unsigned char v = vec[idx];
@@ -62,19 +53,15 @@ __global__ void shared_histogram(
     atomicAdd(&bin[tx], bin_s[tx]);
 }
 
-int checkCpu(
-    int N,
-    unsigned char *h_vec,
-    unsigned int *h_bin
-) {
-    int bin[NUM_BIN] = {0, };
-    for (int i=0; i<N; i++)
-        bin[h_vec[i]]++;
-    
+int checkCpu(int N, unsigned char* h_vec, unsigned int* h_bin) {
+    int bin[NUM_BIN] = {
+        0,
+    };
+    for (int i = 0; i < N; i++) bin[h_vec[i]]++;
+
     int mismatch_count = 0;
-    for (int i=0; i<NUM_BIN; i++)
-        if (h_bin[i] != bin[i])
-            mismatch_count++;
+    for (int i = 0; i < NUM_BIN; i++)
+        if (h_bin[i] != bin[i]) mismatch_count++;
 
     return mismatch_count;
 }
@@ -90,12 +77,12 @@ int main(int argc, char** argv) {
         N = std::stoi(argv[1]);
     }
 
-    unsigned char *h_vec = (unsigned char *)malloc(sizeof(unsigned char) * N);
-    unsigned int *h_bin = (unsigned int *)malloc(sizeof(unsigned int) * NUM_BIN);
-    for (int i=0; i<N; i++) h_vec[i] = rand() % NUM_BIN;
+    unsigned char* h_vec = (unsigned char*)malloc(sizeof(unsigned char) * N);
+    unsigned int* h_bin  = (unsigned int*)malloc(sizeof(unsigned int) * NUM_BIN);
+    for (int i = 0; i < N; i++) h_vec[i] = rand() % NUM_BIN;
 
-    unsigned char *d_vec;
-    unsigned int  *d_bin;
+    unsigned char* d_vec;
+    unsigned int* d_bin;
     CHECK_CUDA_ERROR(cudaMalloc(&d_vec, sizeof(unsigned char) * N));
     CHECK_CUDA_ERROR(cudaMalloc(&d_bin, sizeof(unsigned int) * NUM_BIN));
     CHECK_CUDA_ERROR(cudaMemcpy(d_vec, h_vec, sizeof(unsigned char) * N, cudaMemcpyHostToDevice));
@@ -105,26 +92,26 @@ int main(int argc, char** argv) {
     CHECK_CUDA_ERROR(cudaEventCreate(&kernelEnd));
 
     dim3 threadsPerBlock(256);
-    dim3 blocksPerGrid((256+N-1)/256);
+    dim3 blocksPerGrid((256 + N - 1) / 256);
     dim3 blocksPerGridV2(492);
 
     KernelReport rep("histogram", REPS, 8);
-    rep.addConfig("N", std::to_string(N) + " bytes ("
-                       + bench::humanBytes((double)N) + "), " + std::to_string(NUM_BIN) + " bins");
+    rep.addConfig("N", std::to_string(N) + " bytes (" + bench::humanBytes((double)N) + "), " +
+                           std::to_string(NUM_BIN) + " bins");
     // The two kernels deliberately use different grids: one block per chunk of
     // input vs a fixed grid that loops, so each block keeps its own shared bins.
-    rep.addConfig("launch", "global " + std::to_string(blocksPerGrid.x) + " blocks, shared "
-                            + std::to_string(blocksPerGridV2.x) + " blocks, "
-                            + std::to_string(threadsPerBlock.x) + " threads");
+    rep.addConfig("launch", "global " + std::to_string(blocksPerGrid.x) + " blocks, shared " +
+                                std::to_string(blocksPerGridV2.x) + " blocks, " +
+                                std::to_string(threadsPerBlock.x) + " threads");
     rep.addIterations();
     rep.addConfig("verified", "all bins vs CPU");
     int globalBins = rep.addVariant("global");
     int sharedBins = rep.addVariant("shared");
-    rep.setBytes(globalBins, (double)N);   // one pass over the input
+    rep.setBytes(globalBins, (double)N);  // one pass over the input
     rep.setBytes(sharedBins, (double)N);
     rep.setBaseline(globalBins);
 
-    for (int i=0; i<=REPS; i++) {
+    for (int i = 0; i <= REPS; i++) {
         CHECK_CUDA_ERROR(cudaMemset(d_bin, 0, sizeof(unsigned int) * NUM_BIN));
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
         global_histogram<<<blocksPerGrid, threadsPerBlock>>>(N, d_vec, d_bin);
@@ -132,10 +119,11 @@ int main(int argc, char** argv) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));
 
-        float kernelTime=0.0;
+        float kernelTime = 0.0;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, kernelStart, kernelEnd));
-        if (i==0) {
-            CHECK_CUDA_ERROR(cudaMemcpy(h_bin, d_bin, sizeof(unsigned int) * NUM_BIN, cudaMemcpyDeviceToHost));
+        if (i == 0) {
+            CHECK_CUDA_ERROR(
+                cudaMemcpy(h_bin, d_bin, sizeof(unsigned int) * NUM_BIN, cudaMemcpyDeviceToHost));
             rep.setCheck(globalBins, checkCpu(N, h_vec, h_bin));
         } else {
             rep.addSample(globalBins, kernelTime);
@@ -148,10 +136,11 @@ int main(int argc, char** argv) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));
 
-        kernelTime=0.0;
+        kernelTime = 0.0;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, kernelStart, kernelEnd));
-        if (i==0) {
-            CHECK_CUDA_ERROR(cudaMemcpy(h_bin, d_bin, sizeof(unsigned int) * NUM_BIN, cudaMemcpyDeviceToHost));
+        if (i == 0) {
+            CHECK_CUDA_ERROR(
+                cudaMemcpy(h_bin, d_bin, sizeof(unsigned int) * NUM_BIN, cudaMemcpyDeviceToHost));
             rep.setCheck(sharedBins, checkCpu(N, h_vec, h_bin));
         } else {
             rep.addSample(sharedBins, kernelTime);

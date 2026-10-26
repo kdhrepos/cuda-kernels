@@ -31,32 +31,27 @@
 // bounds check and the index into one call means the two cannot drift apart,
 // which is how a guard ends up testing a different element than the load reads.
 // `ld` is the row stride, normally the matrix's column count.
-__device__ inline float gemmLoadOrZero(const float* src, int ld,
-                                       int row, int col, int rows, int cols)
-{
+__device__ inline float gemmLoadOrZero(const float* src, int ld, int row, int col, int rows,
+                                       int cols) {
     if (row >= rows || col >= cols) return 0.0f;
     return src[(size_t)row * ld + col];
 }
 
 // The same, for the half-precision inputs the tensor-core kernel takes.
-__device__ inline __half gemmLoadOrZero(const __half* src, int ld,
-                                        int row, int col, int rows, int cols)
-{
+__device__ inline __half gemmLoadOrZero(const __half* src, int ld, int row, int col, int rows,
+                                        int cols) {
     if (row >= rows || col >= cols) return __float2half(0.0f);
     return src[(size_t)row * ld + col];
 }
 
 // Row-major store, skipped when the index falls outside the matrix.
-__device__ inline void gemmStoreIfInside(float* dst, int ld,
-                                         int row, int col, int rows, int cols,
-                                         float value)
-{
+__device__ inline void gemmStoreIfInside(float* dst, int ld, int row, int col, int rows, int cols,
+                                         float value) {
     if (row >= rows || col >= cols) return;
     dst[(size_t)row * ld + col] = value;
 }
 
 // Tiles needed to cover `extent` in steps of `tile`.
-__host__ __device__ inline int gemmTiles(int extent, int tile)
-{
+__host__ __device__ inline int gemmTiles(int extent, int tile) {
     return (extent + tile - 1) / tile;
 }

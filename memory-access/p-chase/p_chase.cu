@@ -11,39 +11,27 @@
 constexpr int STRIDE_BYTES = 128;
 constexpr int TIMED_STEPS  = 1 << 18;
 
-void build_chain(
-    std::vector<int>& h, 
-    int num_elems, 
-    int stride_elems
-) {
-    for (int i=0; i<num_elems; i++)
-        if (i % stride_elems == 0) 
-            h[i] = (i+stride_elems) % num_elems;
+void build_chain(std::vector<int>& h, int num_elems, int stride_elems) {
+    for (int i = 0; i < num_elems; i++)
+        if (i % stride_elems == 0) h[i] = (i + stride_elems) % num_elems;
 }
 
-__global__ void chase(
-    const int* arr, 
-    int warm_steps, 
-    int timed_steps,
-    long long* cycles, 
-    int* sink
-) {
+__global__ void chase(const int* arr, int warm_steps, int timed_steps, long long* cycles,
+                      int* sink) {
     long long t0, t1;
-    int j=0;
-    for (int i=0; i<warm_steps; i++) 
-        j = arr[j];
+    int j = 0;
+    for (int i = 0; i < warm_steps; i++) j = arr[j];
 
     t0 = clock64();
-    for (int i=0; i<timed_steps; i++)
-        j = arr[j];
+    for (int i = 0; i < timed_steps; i++) j = arr[j];
     t1 = clock64();
 
     *cycles = t1 - t0;
-    *sink = j;
+    *sink   = j;
 }
 
 int main(int argc, char** argv) {
-    bool csv = bench::takeFlag(argc, argv, "--csv");
+    bool csv      = bench::takeFlag(argc, argv, "--csv");
     int clock_khz = 0;
     CHECK(cudaDeviceGetAttribute(&clock_khz, cudaDevAttrClockRate, 0));
     const double clock_ghz = clock_khz * 1e-6;

@@ -16,23 +16,13 @@
 #define REPS 10
 #endif
 
+__global__ void vecadd(int N, int* d_a, int* d_b, int* d_c) {
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
-
-
-__global__ void vecadd(
-    int N,
-    int* d_a,
-    int* d_b,
-    int* d_c
-) {
-    int tid = threadIdx.x + blockDim.x*blockIdx.x;
-
-    if (tid < N)
-        d_c[tid] = d_a[tid] + d_b[tid];
+    if (tid < N) d_c[tid] = d_a[tid] + d_b[tid];
 }
 
-long long verify(int N, const int* ref_a, const int* ref_b, const int* c)
-{
+long long verify(int N, const int* ref_a, const int* ref_b, const int* c) {
     long long bad = 0;
     for (int i = 0; i < N; i++)
         if (c[i] != ref_a[i] + ref_b[i]) bad++;
@@ -48,22 +38,17 @@ struct Strategy {
     bool csv;
 };
 
-static void configureStages(KernelReport& rep, const char* tag, int N, size_t bytes)
-{
+static void configureStages(KernelReport& rep, const char* tag, int N, size_t bytes) {
     rep.setVariantHeader("stage");
     rep.addConfig("strategy", tag);
-    rep.addConfig("N", std::to_string(N) + " elements ("
-                       + bench::humanBytes((double)bytes) + "/vector)");
+    rep.addConfig(
+        "N", std::to_string(N) + " elements (" + bench::humanBytes((double)bytes) + "/vector)");
     rep.addConfig("iterations", std::to_string(REPS) + " (+1 warm-up, discarded)");
     rep.addConfig("verified", "every element vs CPU");
 }
 
-void explicit_copy_vecadd(
-    const char* tag, int N,
-    const int* h_a, const int* h_b, int* h_c,
-    const int* ref_a, const int* ref_b,
-    Strategy st
-) {
+void explicit_copy_vecadd(const char* tag, int N, const int* h_a, const int* h_b, int* h_c,
+                          const int* ref_a, const int* ref_b, Strategy st) {
     size_t bytes = sizeof(int) * (size_t)N;
 
     int *d_a, *d_b, *d_c;
@@ -88,7 +73,7 @@ void explicit_copy_vecadd(
     int vKernel = rep.addVariant("kernel");
     int vD2H    = rep.addVariant("D2H");
     rep.setBytes(vH2D, 2.0 * bytes);
-    rep.setBytes(vKernel, 3.0 * bytes);   // a, b read; c written
+    rep.setBytes(vKernel, 3.0 * bytes);  // a, b read; c written
     rep.setBytes(vD2H, (double)bytes);
     rep.setTotalRow("total");
 
@@ -120,7 +105,10 @@ void explicit_copy_vecadd(
     long long bad = verify(N, ref_a, ref_b, h_c);
     rep.setTotalCheck(bad);
     st.summary.setCheck(st.sv, bad);
-    if (!st.csv) { rep.print(false); std::cout << "\n"; }
+    if (!st.csv) {
+        rep.print(false);
+        std::cout << "\n";
+    }
 
     CHECK_CUDA_ERROR(cudaEventDestroy(e0));
     CHECK_CUDA_ERROR(cudaEventDestroy(e1));
@@ -132,12 +120,11 @@ void explicit_copy_vecadd(
     CHECK_CUDA_ERROR(cudaFree(d_c));
 }
 
-void pageable_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
-{
+void pageable_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st) {
     size_t bytes = sizeof(int) * (size_t)N;
-    int* h_a = (int*)malloc(bytes);
-    int* h_b = (int*)malloc(bytes);
-    int* h_c = (int*)malloc(bytes);
+    int* h_a     = (int*)malloc(bytes);
+    int* h_b     = (int*)malloc(bytes);
+    int* h_c     = (int*)malloc(bytes);
     memcpy(h_a, ref_a, bytes);
     memcpy(h_b, ref_b, bytes);
 
@@ -148,8 +135,7 @@ void pageable_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
     free(h_c);
 }
 
-void pinned_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
-{
+void pinned_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st) {
     size_t bytes = sizeof(int) * (size_t)N;
     int *h_a, *h_b, *h_c;
     CHECK_CUDA_ERROR(cudaMallocHost(&h_a, bytes));
@@ -165,10 +151,9 @@ void pinned_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
     CHECK_CUDA_ERROR(cudaFreeHost(h_c));
 }
 
-void managed_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
-{
+void managed_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st) {
     const char* tag = "Managed";
-    size_t bytes = sizeof(int) * (size_t)N;
+    size_t bytes    = sizeof(int) * (size_t)N;
 
     int deviceId;
     CHECK_CUDA_ERROR(cudaGetDevice(&deviceId));
@@ -219,7 +204,10 @@ void managed_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
     long long bad = verify(N, ref_a, ref_b, c);
     rep.setCheck(vKernel, bad);
     st.summary.setCheck(st.sv, bad);
-    if (!st.csv) { rep.print(false); std::cout << "\n"; }
+    if (!st.csv) {
+        rep.print(false);
+        std::cout << "\n";
+    }
 
     CHECK_CUDA_ERROR(cudaEventDestroy(e0));
     CHECK_CUDA_ERROR(cudaEventDestroy(e1));
@@ -229,10 +217,9 @@ void managed_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
     CHECK_CUDA_ERROR(cudaFree(c));
 }
 
-void prefetch_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
-{
+void prefetch_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st) {
     const char* tag = "Prefetch";
-    size_t bytes = sizeof(int) * (size_t)N;
+    size_t bytes    = sizeof(int) * (size_t)N;
 
     int deviceId;
     CHECK_CUDA_ERROR(cudaGetDevice(&deviceId));
@@ -299,7 +286,10 @@ void prefetch_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
     long long bad = verify(N, ref_a, ref_b, c);
     rep.setTotalCheck(bad);
     st.summary.setCheck(st.sv, bad);
-    if (!st.csv) { rep.print(false); std::cout << "\n"; }
+    if (!st.csv) {
+        rep.print(false);
+        std::cout << "\n";
+    }
 
     CHECK_CUDA_ERROR(cudaEventDestroy(e0));
     CHECK_CUDA_ERROR(cudaEventDestroy(e1));
@@ -315,9 +305,9 @@ void prefetch_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st)
 
 void multi_stream_pinned_vecadd(int N, const int* ref_a, const int* ref_b, Strategy st) {
     const char* tag = "Pinned + Streams";
-    size_t bytes = sizeof(int) * (size_t)N;
-    int chunk = N / 8;
-    
+    size_t bytes    = sizeof(int) * (size_t)N;
+    int chunk       = N / 8;
+
     int *h_a, *h_b, *h_c;
     int *d_a, *d_b, *d_c;
     CHECK_CUDA_ERROR(cudaMallocHost(&h_a, sizeof(int) * N));
@@ -326,9 +316,9 @@ void multi_stream_pinned_vecadd(int N, const int* ref_a, const int* ref_b, Strat
     CHECK_CUDA_ERROR(cudaMalloc(&d_a, sizeof(int) * N));
     CHECK_CUDA_ERROR(cudaMalloc(&d_b, sizeof(int) * N));
     CHECK_CUDA_ERROR(cudaMalloc(&d_c, sizeof(int) * N));
-    memcpy(h_a, ref_a, bytes);   // same input as every other strategy
+    memcpy(h_a, ref_a, bytes);  // same input as every other strategy
     memcpy(h_b, ref_b, bytes);
-    memset(h_c, 0, bytes);       // so verification cannot be fooled by a stale result
+    memset(h_c, 0, bytes);  // so verification cannot be fooled by a stale result
 
     cudaEvent_t e0, e1, e2;
     CHECK_CUDA_ERROR(cudaEventCreate(&e0));
@@ -336,10 +326,10 @@ void multi_stream_pinned_vecadd(int N, const int* ref_a, const int* ref_b, Strat
     CHECK_CUDA_ERROR(cudaEventCreate(&e2));
 
     dim3 threadsPerBlock(256);
-    dim3 blocksPerGrid(((255+chunk)/256));
+    dim3 blocksPerGrid(((255 + chunk) / 256));
 
     cudaStream_t s[8];
-    for (int j=0; j<8; j++) CHECK_CUDA_ERROR(cudaStreamCreate(&s[j]));
+    for (int j = 0; j < 8; j++) CHECK_CUDA_ERROR(cudaStreamCreate(&s[j]));
 
     KernelReport rep(tag, REPS, 11);
     configureStages(rep, tag, N, bytes);
@@ -348,17 +338,21 @@ void multi_stream_pinned_vecadd(int N, const int* ref_a, const int* ref_b, Strat
     int vTotal = rep.addVariant("overlapped");
     rep.setBytes(vTotal, 3.0 * bytes);
 
-    for (int i=0; i<=REPS; i++) {
+    for (int i = 0; i <= REPS; i++) {
         cudaDeviceSynchronize();
         auto t0 = std::chrono::steady_clock::now();
 
-        for (int j=0; j<8; j++) {
-            CHECK_CUDA_ERROR(cudaMemcpyAsync(d_a + chunk*j, h_a + chunk*j, sizeof(int) * chunk, cudaMemcpyHostToDevice, s[j]));
-            CHECK_CUDA_ERROR(cudaMemcpyAsync(d_b + chunk*j, h_b + chunk*j, sizeof(int) * chunk, cudaMemcpyHostToDevice, s[j]));
+        for (int j = 0; j < 8; j++) {
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(d_a + chunk * j, h_a + chunk * j, sizeof(int) * chunk,
+                                             cudaMemcpyHostToDevice, s[j]));
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(d_b + chunk * j, h_b + chunk * j, sizeof(int) * chunk,
+                                             cudaMemcpyHostToDevice, s[j]));
 
-            vecadd<<<blocksPerGrid, threadsPerBlock, 0, s[j]>>>(chunk, d_a + chunk*j, d_b + chunk*j, d_c + chunk*j);
+            vecadd<<<blocksPerGrid, threadsPerBlock, 0, s[j]>>>(chunk, d_a + chunk * j,
+                                                                d_b + chunk * j, d_c + chunk * j);
 
-            CHECK_CUDA_ERROR(cudaMemcpyAsync(h_c + chunk*j, d_c + chunk*j, sizeof(int) * chunk, cudaMemcpyDeviceToHost, s[j]));
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(h_c + chunk * j, d_c + chunk * j, sizeof(int) * chunk,
+                                             cudaMemcpyDeviceToHost, s[j]));
         }
 
         cudaDeviceSynchronize();
@@ -374,13 +368,16 @@ void multi_stream_pinned_vecadd(int N, const int* ref_a, const int* ref_b, Strat
     long long bad = verify(N, ref_a, ref_b, h_c);
     rep.setCheck(vTotal, bad);
     st.summary.setCheck(st.sv, bad);
-    if (!st.csv) { rep.print(false); std::cout << "\n"; }
+    if (!st.csv) {
+        rep.print(false);
+        std::cout << "\n";
+    }
 
     CHECK_CUDA_ERROR(cudaEventDestroy(e0));
     CHECK_CUDA_ERROR(cudaEventDestroy(e1));
     CHECK_CUDA_ERROR(cudaEventDestroy(e2));
 
-    for (int j=0; j<8; j++) CHECK_CUDA_ERROR(cudaStreamDestroy(s[j]));
+    for (int j = 0; j < 8; j++) CHECK_CUDA_ERROR(cudaStreamDestroy(s[j]));
 
     cudaFreeHost(h_a);
     cudaFreeHost(h_b);
@@ -398,24 +395,23 @@ int main(int argc, char** argv) {
         return 1;
     }
     int power = std::stoi(argv[1]);
-    int N = 1 << power;
+    int N     = 1 << power;
 
     size_t bytes = sizeof(int) * (size_t)N;
 
     KernelReport summary("transfer (end-to-end)", REPS, 10);
     summary.setVariantHeader("strategy");
-    summary.addConfig("N", "2^" + std::to_string(power) + " = " + std::to_string(N)
-                           + " elements (" + bench::humanBytes((double)bytes) + "/vector)");
-    summary.addConfig("traffic", bench::humanBytes(3.0 * bytes)
-                                 + " host<->device per iteration");
+    summary.addConfig("N", "2^" + std::to_string(power) + " = " + std::to_string(N) +
+                               " elements (" + bench::humanBytes((double)bytes) + "/vector)");
+    summary.addConfig("traffic", bench::humanBytes(3.0 * bytes) + " host<->device per iteration");
     summary.addIterations();
     summary.addConfig("verified", "every element vs CPU");
-    int svPageable  = summary.addVariant("pageable");
-    int svPinned    = summary.addVariant("pinned");
-    int svManaged   = summary.addVariant("managed");
-    int svPrefetch  = summary.addVariant("prefetch");
-    int svStreams   = summary.addVariant("streams");
-    int svs[5] = {svPageable, svPinned, svManaged, svPrefetch, svStreams};
+    int svPageable = summary.addVariant("pageable");
+    int svPinned   = summary.addVariant("pinned");
+    int svManaged  = summary.addVariant("managed");
+    int svPrefetch = summary.addVariant("prefetch");
+    int svStreams  = summary.addVariant("streams");
+    int svs[5]     = {svPageable, svPinned, svManaged, svPrefetch, svStreams};
     for (int i = 0; i < 5; i++) summary.setBytes(svs[i], 3.0 * bytes);
     summary.setBaseline(svPageable);
 
@@ -427,11 +423,16 @@ int main(int argc, char** argv) {
     }
 
     Strategy st = {summary, svPageable, csv};
-    st.sv = svPageable;  pageable_vecadd(N, ref_a, ref_b, st);
-    st.sv = svPinned;    pinned_vecadd(N, ref_a, ref_b, st);
-    st.sv = svManaged;   managed_vecadd(N, ref_a, ref_b, st);
-    st.sv = svPrefetch;  prefetch_vecadd(N, ref_a, ref_b, st);
-    st.sv = svStreams;   multi_stream_pinned_vecadd(N, ref_a, ref_b, st);
+    st.sv       = svPageable;
+    pageable_vecadd(N, ref_a, ref_b, st);
+    st.sv = svPinned;
+    pinned_vecadd(N, ref_a, ref_b, st);
+    st.sv = svManaged;
+    managed_vecadd(N, ref_a, ref_b, st);
+    st.sv = svPrefetch;
+    prefetch_vecadd(N, ref_a, ref_b, st);
+    st.sv = svStreams;
+    multi_stream_pinned_vecadd(N, ref_a, ref_b, st);
 
     summary.print(csv);
 

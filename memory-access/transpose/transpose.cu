@@ -16,125 +16,79 @@
 #define TILE 32
 #endif
 
-
-
 double gbps(int M, int N, float ms) {
     double bytes = 2.0 * M * N * sizeof(float);
-    return bytes / (ms * 1e-3) / 1e9;   // = bytes / ms / 1e6
+    return bytes / (ms * 1e-3) / 1e9;  // = bytes / ms / 1e6
 }
 
-__global__ void copyOnlyKernel (
-    int M,
-    int N,
-    float *in,
-    float *out
-) {
+__global__ void copyOnlyKernel(int M, int N, float* in, float* out) {
     int tiy = blockDim.y * blockIdx.y + threadIdx.y;
     int tix = blockDim.x * blockIdx.x + threadIdx.x;
 
-    if (tiy < M && tix < N)
-        out[tiy*N + tix] = in[tiy*N + tix];
+    if (tiy < M && tix < N) out[tiy * N + tix] = in[tiy * N + tix];
 }
 
-__global__ void naiveReadCoalescedMatrixTranspose (
-    int M,
-    int N,
-    float *in,
-    float *out
-) {
+__global__ void naiveReadCoalescedMatrixTranspose(int M, int N, float* in, float* out) {
     int tiy = blockDim.y * blockIdx.y + threadIdx.y;
     int tix = blockDim.x * blockIdx.x + threadIdx.x;
 
-    if (tiy < M && tix < N)
-        out[tix*M + tiy] = in[tiy*N + tix];
+    if (tiy < M && tix < N) out[tix * M + tiy] = in[tiy * N + tix];
 }
 
-__global__ void naiveWriteCoalescedMatrixTranspose (
-    int M,
-    int N,
-    float *in,
-    float *out
-) {
+__global__ void naiveWriteCoalescedMatrixTranspose(int M, int N, float* in, float* out) {
     int tiy = blockDim.y * blockIdx.y + threadIdx.y;
     int tix = blockDim.x * blockIdx.x + threadIdx.x;
 
-    if (tiy < N && tix < M)
-        out[tiy*M + tix] = in[tix*N + tiy];
+    if (tiy < N && tix < M) out[tiy * M + tix] = in[tix * N + tiy];
 }
 
-__global__ void tiledMatrixTranspose (
-    int M,
-    int N,
-    float *in,
-    float *out
-) {
+__global__ void tiledMatrixTranspose(int M, int N, float* in, float* out) {
     __shared__ float ins[TILE][TILE];
-    
-    int tiy = threadIdx.y;
-    int tix = threadIdx.x;
+
+    int tiy   = threadIdx.y;
+    int tix   = threadIdx.x;
     int inRow = blockDim.y * blockIdx.y + tiy;
     int inCol = blockDim.x * blockIdx.x + tix;
 
-
-    if (inRow < M && inCol < N)
-        ins[tiy][tix] = in[inRow*N + inCol];
+    if (inRow < M && inCol < N) ins[tiy][tix] = in[inRow * N + inCol];
     __syncthreads();
 
     int outRow = blockDim.x * blockIdx.x + tiy;
     int outCol = blockDim.y * blockIdx.y + tix;
 
-    if (outRow < N && outCol < M)
-        out[outRow*M + outCol] = ins[tix][tiy];
+    if (outRow < N && outCol < M) out[outRow * M + outCol] = ins[tix][tiy];
 }
 
-__global__ void tiledMatrixTransposePadded (
-    int M,
-    int N,
-    float *in,
-    float *out
-) {
-    __shared__ float ins[TILE][TILE+1];
-    
-    int tiy = threadIdx.y;
-    int tix = threadIdx.x;
+__global__ void tiledMatrixTransposePadded(int M, int N, float* in, float* out) {
+    __shared__ float ins[TILE][TILE + 1];
+
+    int tiy   = threadIdx.y;
+    int tix   = threadIdx.x;
     int inRow = blockDim.y * blockIdx.y + tiy;
     int inCol = blockDim.x * blockIdx.x + tix;
 
-    if (inRow < M && inCol < N)
-        ins[tiy][tix] = in[inRow*N + inCol];
+    if (inRow < M && inCol < N) ins[tiy][tix] = in[inRow * N + inCol];
     __syncthreads();
 
     int outRow = blockDim.x * blockIdx.x + tiy;
     int outCol = blockDim.y * blockIdx.y + tix;
 
-    if (outRow < N && outCol < M)
-        out[outRow*M + outCol] = ins[tix][tiy];
+    if (outRow < N && outCol < M) out[outRow * M + outCol] = ins[tix][tiy];
 }
 
-void initMat(
-    int row, 
-    int col, 
-    float* mat) 
-{
-    int i=0;
-    for (int r=0; r<row; r++)
-        for (int c=0; c<col; c++)
-            mat[r*col + c] = i++;
+void initMat(int row, int col, float* mat) {
+    int i = 0;
+    for (int r = 0; r < row; r++)
+        for (int c = 0; c < col; c++) mat[r * col + c] = i++;
 }
 
-int checkCpu(
-    int M,
-    int N,
-    float *in,
-    float *out
-) {
-    int mismatchCount=0;
+int checkCpu(int M, int N, float* in, float* out) {
+    int mismatchCount = 0;
 
-    for (int r=0; r<M; r++)
-        for (int c=0; c<N; c++)
-            if (in[r*N + c] != out[c*M + r])
-                mismatchCount++;
-                // std::cerr << "Mismatch at: " << r << ", " << c << std::endl;
+    for (int r = 0; r < M; r++)
+        for (int c = 0; c < N; c++)
+            if (in[r * N + c] != out[c * M + r]) mismatchCount++;
+    // std::cerr << "Mismatch at: " << r << ", " << c << std::endl;
 
     return mismatchCount;
 }
@@ -151,13 +105,13 @@ int main(int argc, char** argv) {
         N = std::stoi(argv[2]);
     }
 
-    size_t size=sizeof(float)*M*N;
+    size_t size = sizeof(float) * M * N;
 
-    float *h_in=(float *)malloc(size);
-    float *h_out=(float *)malloc(size);
+    float* h_in  = (float*)malloc(size);
+    float* h_out = (float*)malloc(size);
 
     initMat(M, N, h_in);
-    
+
     float *d_in, *d_out;
     CHECK_CUDA_ERROR(cudaMalloc(&d_in, size));
     CHECK_CUDA_ERROR(cudaMalloc(&d_out, size));
@@ -168,33 +122,33 @@ int main(int argc, char** argv) {
     CHECK_CUDA_ERROR(cudaEventCreate(&kernelStart));
     CHECK_CUDA_ERROR(cudaEventCreate(&kernelEnd));
 
-    float kernelTime=0.0;
+    float kernelTime = 0.0;
     dim3 threadsPerBlock(TILE, TILE);
 
     // copy-only is not a transpose; it is the bandwidth ceiling the transposes
     // are measured against, so it is the baseline and it is not verified.
     KernelReport rep("transpose", REPS, 10);
-    rep.addConfig("matrix", std::to_string(M) + " x " + std::to_string(N)
-                            + " floats (" + bench::humanBytes((double)size) + ")");
-    rep.addConfig("launch", "tiles of " + std::to_string(TILE) + " x "
-                            + std::to_string(TILE) + " threads");
+    rep.addConfig("matrix", std::to_string(M) + " x " + std::to_string(N) + " floats (" +
+                                bench::humanBytes((double)size) + ")");
+    rep.addConfig("launch",
+                  "tiles of " + std::to_string(TILE) + " x " + std::to_string(TILE) + " threads");
     rep.addIterations();
     rep.addConfig("verified", "every element vs CPU");
-    int copyOnly  = rep.addVariant("copy-only");
-    int readCoal  = rep.addVariant("read-coal");
-    int tiled     = rep.addVariant("tiled");
-    int tiledPad  = rep.addVariant("tiled-pad");
-    int writeCoal = rep.addVariant("write-coal");
-    double traffic = 2.0 * M * N * sizeof(float);   // one read + one write
-    rep.setBytes(copyOnly,  traffic);
-    rep.setBytes(readCoal,  traffic);
-    rep.setBytes(tiled,     traffic);
-    rep.setBytes(tiledPad,  traffic);
+    int copyOnly   = rep.addVariant("copy-only");
+    int readCoal   = rep.addVariant("read-coal");
+    int tiled      = rep.addVariant("tiled");
+    int tiledPad   = rep.addVariant("tiled-pad");
+    int writeCoal  = rep.addVariant("write-coal");
+    double traffic = 2.0 * M * N * sizeof(float);  // one read + one write
+    rep.setBytes(copyOnly, traffic);
+    rep.setBytes(readCoal, traffic);
+    rep.setBytes(tiled, traffic);
+    rep.setBytes(tiledPad, traffic);
     rep.setBytes(writeCoal, traffic);
     rep.setBaseline(copyOnly);
 
-    for (int i=0; i<=REPS; i++) {
-        dim3 blocksPerGrid((TILE+N-1)/TILE, (TILE+M-1)/TILE);
+    for (int i = 0; i <= REPS; i++) {
+        dim3 blocksPerGrid((TILE + N - 1) / TILE, (TILE + M - 1) / TILE);
 
         CHECK_CUDA_ERROR(cudaMemset(d_out, 0xFF, size));
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
@@ -247,7 +201,7 @@ int main(int argc, char** argv) {
             rep.addSample(tiledPad, kernelTime);
         }
 
-        blocksPerGrid = dim3((TILE+M-1)/TILE, (TILE+N-1)/TILE);
+        blocksPerGrid = dim3((TILE + M - 1) / TILE, (TILE + N - 1) / TILE);
 
         CHECK_CUDA_ERROR(cudaMemset(d_out, 0xFF, size));
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));

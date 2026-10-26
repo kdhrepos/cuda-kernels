@@ -31,21 +31,25 @@
 #include <vector>
 
 class KernelReport {
-public:
+   public:
     KernelReport(const char* name, int iter, int nameWidth = 9)
-        : name_(name), iter_(iter), nameWidth_(nameWidth),
-          metric_(kNoMetric), baseline_(-1),
-          totalMismatches_(0), totalChecked_(false),
-          variantHeader_("variant"), showTimes_(true), showMedian_(false) {}
+        : name_(name),
+          iter_(iter),
+          nameWidth_(nameWidth),
+          metric_(kNoMetric),
+          baseline_(-1),
+          totalMismatches_(0),
+          totalChecked_(false),
+          variantHeader_("variant"),
+          showTimes_(true),
+          showMedian_(false) {}
 
-    void addConfig(const char* label, const std::string& value)
-    {
+    void addConfig(const char* label, const std::string& value) {
         config_.push_back(std::make_pair(std::string(label), value));
     }
 
     // Shorthand for the line every benchmark here wants.
-    void addIterations()
-    {
+    void addIterations() {
         addConfig("iterations", std::to_string(iter_) + " (+1 warm-up, discarded)");
     }
 
@@ -64,13 +68,12 @@ public:
 
     int addVariant(const std::string& label) { return addVariant(label.c_str()); }
 
-    int addVariant(const char* label)
-    {
+    int addVariant(const char* label) {
         Variant v;
-        v.label = label;
-        v.amount = 0.0;
+        v.label      = label;
+        v.amount     = 0.0;
         v.mismatches = 0;
-        v.checked = false;
+        v.checked    = false;
         v.cells.resize(columns_.size());
         variants_.push_back(v);
         if ((int)v.label.size() > nameWidth_) nameWidth_ = (int)v.label.size();
@@ -79,43 +82,45 @@ public:
 
     // Bytes this variant moves -> GB/s. Flops it does -> GFLOP/s. One or the
     // other for a whole report, whichever the benchmark is bound by.
-    void setBytes(int v, double bytes) { variants_[v].amount = bytes; metric_ = kBandwidth; }
-    void setFlop(int v, double flop)   { variants_[v].amount = flop;  metric_ = kThroughput; }
+    void setBytes(int v, double bytes) {
+        variants_[v].amount = bytes;
+        metric_             = kBandwidth;
+    }
+    void setFlop(int v, double flop) {
+        variants_[v].amount = flop;
+        metric_             = kThroughput;
+    }
 
     // A column the report does not model. `scientific` prints 1.2e-07 rather
     // than a fixed-point number, which is what error figures need.
-    int addColumn(const char* header, int width, int precision = 2, bool scientific = false)
-    {
+    int addColumn(const char* header, int width, int precision = 2, bool scientific = false) {
         Column c;
-        c.header = header;
-        c.width = width;
-        c.precision = precision;
+        c.header     = header;
+        c.width      = width;
+        c.precision  = precision;
         c.scientific = scientific;
         columns_.push_back(c);
         for (size_t i = 0; i < variants_.size(); i++) variants_[i].cells.resize(columns_.size());
         return (int)columns_.size() - 1;
     }
 
-    void setCell(int v, int col, double value)
-    {
-        Cell& c = variants_[v].cells[col];
-        c.set = true;
+    void setCell(int v, int col, double value) {
+        Cell& c  = variants_[v].cells[col];
+        c.set    = true;
         c.isText = false;
-        c.value = value;
+        c.value  = value;
     }
 
-    void setCell(int v, int col, const std::string& text)
-    {
-        Cell& c = variants_[v].cells[col];
-        c.set = true;
+    void setCell(int v, int col, const std::string& text) {
+        Cell& c  = variants_[v].cells[col];
+        c.set    = true;
         c.isText = true;
-        c.text = text;
+        c.text   = text;
     }
 
-    void setCheck(int v, long long mismatches)
-    {
+    void setCheck(int v, long long mismatches) {
         variants_[v].mismatches = mismatches;
-        variants_[v].checked = true;
+        variants_[v].checked    = true;
     }
 
     // The variant every other row is compared against in the "x base" column.
@@ -125,29 +130,28 @@ public:
     // one pipeline rather than competing implementations: the times add up, and
     // the metric becomes the whole pipeline's traffic over its whole time.
     void setTotalRow(const char* label) { totalLabel_ = label; }
-    void setTotalCheck(long long mismatches)
-    {
+    void setTotalCheck(long long mismatches) {
         totalMismatches_ = mismatches;
-        totalChecked_ = true;
+        totalChecked_    = true;
     }
 
     void addSample(int v, float ms) { variants_[v].samples.push_back(ms); }
 
-    bool passed() const
-    {
+    bool passed() const {
         if (totalChecked_ && totalMismatches_ != 0) return false;
         for (size_t i = 0; i < variants_.size(); i++)
             if (variants_[i].checked && variants_[i].mismatches != 0) return false;
         return true;
     }
 
-    void print(bool csv = false) const
-    {
-        if (csv) printCsv();
-        else     printTable();
+    void print(bool csv = false) const {
+        if (csv)
+            printCsv();
+        else
+            printTable();
     }
 
-private:
+   private:
     enum Metric { kNoMetric, kBandwidth, kThroughput };
 
     struct Cell {
@@ -168,26 +172,21 @@ private:
     struct Variant {
         std::string label;
         std::vector<float> samples;
-        double amount;        // bytes or flops, by metric_
+        double amount;  // bytes or flops, by metric_
         long long mismatches;
         bool checked;
         std::vector<Cell> cells;
     };
 
-    const char* metricLabel() const
-    {
-        return metric_ == kBandwidth ? "GB/s" : "GFLOP/s";
-    }
+    const char* metricLabel() const { return metric_ == kBandwidth ? "GB/s" : "GFLOP/s"; }
 
-    double metricValue(const Variant& v, double avgMs) const
-    {
-        if (metric_ == kBandwidth)  return bench::gbPerSec(v.amount, avgMs);
+    double metricValue(const Variant& v, double avgMs) const {
+        if (metric_ == kBandwidth) return bench::gbPerSec(v.amount, avgMs);
         if (metric_ == kThroughput) return bench::gflopPerSec(v.amount, avgMs);
         return 0.0;
     }
 
-    bool anyChecked() const
-    {
+    bool anyChecked() const {
         if (totalChecked_) return true;
         for (size_t i = 0; i < variants_.size(); i++)
             if (variants_[i].checked) return true;
@@ -196,33 +195,29 @@ private:
 
     // With one sample per variant there is no spread to show, so the table
     // collapses avg/min/max into a single "time" column.
-    bool singleSample() const
-    {
+    bool singleSample() const {
         for (size_t i = 0; i < variants_.size(); i++)
             if (variants_[i].samples.size() > 1) return false;
         return true;
     }
 
-    int timeGroups() const
-    {
+    int timeGroups() const {
         if (!showTimes_) return 0;
         int n = singleSample() ? 1 : 3;
         if (showMedian_ && !singleSample()) n++;
         return n;
     }
 
-    int width(int timeW) const
-    {
+    int width(int timeW) const {
         int w = 1 + nameWidth_ + timeGroups() * (timeW + 3);
         if (metric_ != kNoMetric) w += kMetricWidth;
         for (size_t i = 0; i < columns_.size(); i++) w += columns_[i].width;
-        if (baseline_ >= 0)       w += kSpeedupWidth;
-        if (anyChecked())         w += kCheckWidth;
+        if (baseline_ >= 0) w += kSpeedupWidth;
+        if (anyChecked()) w += kCheckWidth;
         return w;
     }
 
-    void printCell(const Column& col, const Cell& cell) const
-    {
+    void printCell(const Column& col, const Cell& cell) const {
         if (!cell.set) {
             std::cout << std::setw(col.width) << "-";
             return;
@@ -232,12 +227,13 @@ private:
             return;
         }
         std::cout << std::setw(col.width) << std::setprecision(col.precision);
-        if (col.scientific) std::cout << std::scientific << cell.value << std::fixed;
-        else                std::cout << std::fixed << cell.value;
+        if (col.scientific)
+            std::cout << std::scientific << cell.value << std::fixed;
+        else
+            std::cout << std::fixed << cell.value;
     }
 
-    void printTable() const
-    {
+    void printTable() const {
         using namespace bench;
 
         double fastest = 0.0, baseAvg = 0.0, slowest = 0.0;
@@ -249,9 +245,9 @@ private:
         }
         // Unit from the fastest row so it keeps its digits; column width from the
         // slowest so the two still line up.
-        Unit unit = pickUnit(fastest);
-        int timeW = timeWidthFor(slowest * unit.scale);
-        int w = width(timeW);
+        Unit unit   = pickUnit(fastest);
+        int timeW   = timeWidthFor(slowest * unit.scale);
+        int w       = width(timeW);
         bool single = singleSample();
 
         banner(name_, w);
@@ -275,23 +271,23 @@ private:
         for (size_t i = 0; i < columns_.size(); i++)
             head += rightLabel(columns_[i].header.c_str(), columns_[i].width);
         if (baseline_ >= 0) head += rightLabel("x base", kSpeedupWidth);
-        if (anyChecked())   head += rightLabel("check", kCheckWidth);
+        if (anyChecked()) head += rightLabel("check", kCheckWidth);
         std::cout << head << "\n";
         rule(w);
 
         for (size_t i = 0; i < variants_.size(); i++) {
             const Variant& v = variants_[i];
-            Stat s = summarize(v.samples);
+            Stat s           = summarize(v.samples);
 
             std::cout << " " << std::left << std::setw(nameWidth_) << v.label << std::right;
             if (showTimes_) {
                 if (single) {
-                    std::cout << std::fixed << std::setprecision(2)
-                              << std::setw(timeW) << s.avg*unit.scale << " " << unit.name;
+                    std::cout << std::fixed << std::setprecision(2) << std::setw(timeW)
+                              << s.avg * unit.scale << " " << unit.name;
                 } else {
                     timeCells(s, unit, timeW);
                     if (showMedian_)
-                        std::cout << std::setw(timeW) << s.med*unit.scale << " " << unit.name;
+                        std::cout << std::setw(timeW) << s.med * unit.scale << " " << unit.name;
                 }
             }
             if (metric_ != kNoMetric)
@@ -309,21 +305,21 @@ private:
         rule(w);
 
         if (!totalLabel_.empty()) {
-            Stat t = totalStat();
+            Stat t        = totalStat();
             double amount = totalAmount();
             std::cout << " " << std::left << std::setw(nameWidth_) << totalLabel_ << std::right;
             if (showTimes_) {
                 if (single) {
-                    std::cout << std::fixed << std::setprecision(2)
-                              << std::setw(timeW) << t.avg*unit.scale << " " << unit.name;
+                    std::cout << std::fixed << std::setprecision(2) << std::setw(timeW)
+                              << t.avg * unit.scale << " " << unit.name;
                 } else {
                     timeCells(t, unit, timeW);
                     if (showMedian_) std::cout << std::setw(timeW + 3) << "";
                 }
             }
             if (metric_ != kNoMetric) {
-                double mv = (metric_ == kBandwidth) ? gbPerSec(amount, t.avg)
-                                                    : gflopPerSec(amount, t.avg);
+                double mv =
+                    (metric_ == kBandwidth) ? gbPerSec(amount, t.avg) : gflopPerSec(amount, t.avg);
                 std::cout << std::setw(kMetricWidth) << std::fixed << std::setprecision(2) << mv;
             }
             for (size_t c = 0; c < columns_.size(); c++)
@@ -345,8 +341,7 @@ private:
         bannerEnd(w);
     }
 
-    bench::Stat totalStat() const
-    {
+    bench::Stat totalStat() const {
         bench::Stat t;
         for (size_t i = 0; i < variants_.size(); i++) {
             bench::Stat s = bench::summarize(variants_[i].samples);
@@ -357,8 +352,7 @@ private:
         return t;
     }
 
-    double totalAmount() const
-    {
+    double totalAmount() const {
         double amount = 0.0;
         for (size_t i = 0; i < variants_.size(); i++) amount += variants_[i].amount;
         return amount;
@@ -366,27 +360,30 @@ private:
 
     // "% peak" -> pct_peak, "cycles/load" -> cycles_load: a column header is for
     // people, a CSV field name has to survive a script.
-    static std::string csvName(const std::string& header)
-    {
+    static std::string csvName(const std::string& header) {
         std::string out;
         for (size_t i = 0; i < header.size(); i++) {
             char ch = header[i];
-            if (ch == '%') out += "pct";
-            else if (ch == ' ' || ch == '/' || ch == '-') out += '_';
-            else out += ch;
+            if (ch == '%')
+                out += "pct";
+            else if (ch == ' ' || ch == '/' || ch == '-')
+                out += '_';
+            else
+                out += ch;
         }
         std::string squeezed;
         for (size_t i = 0; i < out.size(); i++) {
-            if (out[i] == '_' && !squeezed.empty() && squeezed[squeezed.size()-1] == '_') continue;
+            if (out[i] == '_' && !squeezed.empty() && squeezed[squeezed.size() - 1] == '_')
+                continue;
             squeezed += out[i];
         }
         while (!squeezed.empty() && squeezed[0] == '_') squeezed.erase(0, 1);
-        while (!squeezed.empty() && squeezed[squeezed.size()-1] == '_') squeezed.erase(squeezed.size()-1);
+        while (!squeezed.empty() && squeezed[squeezed.size() - 1] == '_')
+            squeezed.erase(squeezed.size() - 1);
         return squeezed;
     }
 
-    std::string csvHeader() const
-    {
+    std::string csvHeader() const {
         std::string h = "name,variant,iter";
         if (showTimes_) {
             h += singleSample() ? ",ms" : ",avg_ms,min_ms,max_ms";
@@ -395,14 +392,13 @@ private:
         if (metric_ != kNoMetric) h += (metric_ == kBandwidth) ? ",gbs" : ",gflops";
         for (size_t i = 0; i < columns_.size(); i++) h += "," + csvName(columns_[i].header);
         if (baseline_ >= 0) h += ",speedup";
-        if (anyChecked())   h += ",status";
+        if (anyChecked()) h += ",status";
         return h;
     }
 
     void printCsvRow(const std::string& label, const bench::Stat& s, double amount,
-                     const std::vector<Cell>* cells, double baseAvg,
-                     bool checked, long long mismatches) const
-    {
+                     const std::vector<Cell>* cells, double baseAvg, bool checked,
+                     long long mismatches) const {
         using namespace bench;
         std::cout << name_ << "," << label << "," << iter_;
         if (showTimes_) {
@@ -413,18 +409,23 @@ private:
             }
         }
         if (metric_ != kNoMetric) {
-            double mv = (metric_ == kBandwidth) ? gbPerSec(amount, s.avg)
-                                                : gflopPerSec(amount, s.avg);
+            double mv =
+                (metric_ == kBandwidth) ? gbPerSec(amount, s.avg) : gflopPerSec(amount, s.avg);
             std::cout << std::setprecision(2) << "," << mv;
         }
         for (size_t c = 0; c < columns_.size(); c++) {
             std::cout << ",";
             if (!cells || !(*cells)[c].set) continue;
             const Cell& cell = (*cells)[c];
-            if (cell.isText) { std::cout << cell.text; continue; }
+            if (cell.isText) {
+                std::cout << cell.text;
+                continue;
+            }
             std::cout << std::setprecision(columns_[c].precision);
-            if (columns_[c].scientific) std::cout << std::scientific << cell.value << std::fixed;
-            else                        std::cout << std::fixed << cell.value;
+            if (columns_[c].scientific)
+                std::cout << std::scientific << cell.value << std::fixed;
+            else
+                std::cout << std::fixed << cell.value;
         }
         if (baseline_ >= 0)
             std::cout << std::setprecision(3) << ","
@@ -434,8 +435,7 @@ private:
         std::cout << "\n";
     }
 
-    void printCsv() const
-    {
+    void printCsv() const {
         using namespace bench;
 
         double baseAvg = 0.0;
@@ -444,19 +444,19 @@ private:
         std::cout << csvHeader() << "\n";
         for (size_t i = 0; i < variants_.size(); i++) {
             const Variant& v = variants_[i];
-            printCsvRow(v.label, summarize(v.samples), v.amount, &v.cells, baseAvg,
-                        v.checked, v.mismatches);
+            printCsvRow(v.label, summarize(v.samples), v.amount, &v.cells, baseAvg, v.checked,
+                        v.mismatches);
         }
         // The total row carries the pipeline's verification, so the CSV needs it
         // too or a sweep would only ever see "unchecked" stages.
         if (!totalLabel_.empty())
-            printCsvRow(totalLabel_, totalStat(), totalAmount(), 0, 0.0,
-                        totalChecked_, totalMismatches_);
+            printCsvRow(totalLabel_, totalStat(), totalAmount(), 0, 0.0, totalChecked_,
+                        totalMismatches_);
     }
 
-    static const int kMetricWidth = 10;
+    static const int kMetricWidth  = 10;
     static const int kSpeedupWidth = 9;
-    static const int kCheckWidth = 8;
+    static const int kCheckWidth   = 8;
 
     std::string name_;
     int iter_;

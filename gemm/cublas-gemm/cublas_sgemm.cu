@@ -13,16 +13,10 @@
 #define REPS 10
 #endif
 
-
-
-void initMat(
-    int row,
-    int col,
-    float* mat)
-{
-    for (int r=0; r<row; r++) {
-        for (int c=0; c<col; c++) {
-            mat[r*col + c] = (float)(rand() % 10);
+void initMat(int row, int col, float* mat) {
+    for (int r = 0; r < row; r++) {
+        for (int c = 0; c < col; c++) {
+            mat[r * col + c] = (float)(rand() % 10);
         }
     }
 }
@@ -32,26 +26,13 @@ void initMat(
 // matrix is exactly an N x M column-major one, so swapping the operands and
 // passing the row lengths as leading dimensions computes the row-major product
 // with no data movement.
-void launchSgemm(
-    cublasHandle_t handle,
-    int M,
-    int N,
-    int K,
-    const float* d_a,
-    const float* d_b,
-    float* d_c
-) {
+void launchSgemm(cublasHandle_t handle, int M, int N, int K, const float* d_a, const float* d_b,
+                 float* d_c) {
     const float alpha = 1.0f;
     const float beta  = 0.0f;
 
-    CHECK_CUBLAS(cublasSgemm(handle,
-                             CUBLAS_OP_N, CUBLAS_OP_N,
-                             N, M, K,
-                             &alpha,
-                             d_b, N,
-                             d_a, K,
-                             &beta,
-                             d_c, N));
+    CHECK_CUBLAS(cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, d_b, N, d_a, K,
+                             &beta, d_c, N));
 }
 
 int main(int argc, char** argv) {
@@ -68,13 +49,13 @@ int main(int argc, char** argv) {
         K = std::stoi(argv[3]);
     }
 
-    size_t size_a=sizeof(float)*M*K;
-    size_t size_b=sizeof(float)*K*N;
-    size_t size_c=sizeof(float)*M*N;
+    size_t size_a = sizeof(float) * M * K;
+    size_t size_b = sizeof(float) * K * N;
+    size_t size_c = sizeof(float) * M * N;
 
-    float *h_a=(float *)malloc(size_a);
-    float *h_b=(float *)malloc(size_b);
-    float *h_c=(float *)malloc(size_c);
+    float* h_a = (float*)malloc(size_a);
+    float* h_b = (float*)malloc(size_b);
+    float* h_c = (float*)malloc(size_c);
 
     initMat(M, K, h_a);
     initMat(K, N, h_b);
@@ -98,17 +79,17 @@ int main(int argc, char** argv) {
     // cuBLAS picks its own grid and block, so there is no launch config to report.
     int variant = rep.addVariant("cublas");
 
-    for (int i=0; i<=REPS; i++) {
+    for (int i = 0; i <= REPS; i++) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
         launchSgemm(handle, M, N, K, d_a, d_b, d_c);
         CHECK_LAST_CUDA_ERROR();
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));
 
-        float kernelTime=0.0;
+        float kernelTime = 0.0;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, kernelStart, kernelEnd));
         // i == 0 is the warm-up: verified, then thrown away.
-        if (i==0) {
+        if (i == 0) {
             CHECK_CUDA_ERROR(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost));
             rep.setCheck(variant, gemmCheckCpu(M, N, K, h_a, h_b, h_c));
         } else {

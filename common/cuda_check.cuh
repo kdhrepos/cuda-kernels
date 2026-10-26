@@ -17,10 +17,8 @@
 #include <cstdlib>
 
 #define CHECK_CUDA_ERROR(val) check((val), #val, __FILE__, __LINE__)
-inline void check(cudaError_t err, char const* func, char const* file, int line)
-{
-    if (err != cudaSuccess)
-    {
+inline void check(cudaError_t err, char const* func, char const* file, int line) {
+    if (err != cudaSuccess) {
         std::cerr << "CUDA Runtime Error at: " << file << ":" << line << std::endl;
         std::cerr << cudaGetErrorString(err) << " " << func << std::endl;
         std::exit(EXIT_FAILURE);
@@ -28,13 +26,10 @@ inline void check(cudaError_t err, char const* func, char const* file, int line)
 }
 
 #define CHECK_LAST_CUDA_ERROR() checkLast(__FILE__, __LINE__)
-inline void checkLast(char const* file, int line)
-{
+inline void checkLast(char const* file, int line) {
     cudaError_t const err{cudaGetLastError()};
-    if (err != cudaSuccess)
-    {
-        std::cerr << "CUDA Runtime Error at: " << file << ":" << line
-                  << std::endl;
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA Runtime Error at: " << file << ":" << line << std::endl;
         std::cerr << cudaGetErrorString(err) << std::endl;
         std::exit(EXIT_FAILURE);
     }
@@ -43,13 +38,10 @@ inline void checkLast(char const* file, int line)
 // Reports a pending error and keeps going. 02-matadd and gray-to-scale do this
 // on purpose -- they want to see the error without losing the rest of the run.
 #define WARN_LAST_CUDA_ERROR() warnLast(__FILE__, __LINE__)
-inline void warnLast(char const* file, int line)
-{
+inline void warnLast(char const* file, int line) {
     cudaError_t const err{cudaGetLastError()};
-    if (err != cudaSuccess)
-    {
-        std::cerr << "CUDA Runtime Error at: " << file << ":" << line
-                  << std::endl;
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA Runtime Error at: " << file << ":" << line << std::endl;
         std::cerr << cudaGetErrorString(err) << std::endl;
         // Deliberately no exit: the caller wants to continue.
     }

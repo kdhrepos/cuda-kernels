@@ -12,41 +12,29 @@
 #define REPS 10
 #endif
 
-
-
-__global__ void naiveGemm(int m,
-                        int n,
-                        int k,
-                        float* a,
-                        float* b,
-                        float* c) {
+__global__ void naiveGemm(int m, int n, int k, float* a, float* b, float* c) {
     // Swapped against naive_gemm on purpose: here x walks the ROWS of C and y
     // the columns, so neighbouring threads in a warp step down a column of C
     // with stride n instead of along a row. Same arithmetic, uncoalesced.
-    const int row = blockDim.x*blockIdx.x + threadIdx.x;
-    const int col = blockDim.y*blockIdx.y + threadIdx.y;
+    const int row = blockDim.x * blockIdx.x + threadIdx.x;
+    const int col = blockDim.y * blockIdx.y + threadIdx.y;
 
     if (row < m && col < n) {
-        float sum=0.0f;
-        for (int i=0; i<k; i++) {
-            sum += a[(size_t)row*k + i] * b[(size_t)i*n + col];
+        float sum = 0.0f;
+        for (int i = 0; i < k; i++) {
+            sum += a[(size_t)row * k + i] * b[(size_t)i * n + col];
         }
-        c[(size_t)row*n + col] = sum;
+        c[(size_t)row * n + col] = sum;
     }
 }
 
-void initMat(
-    int row,
-    int col,
-    float* mat)
-{
-    for (int r=0; r<row; r++) {
-        for (int c=0; c<col; c++) {
-            mat[r*col + c] = (float)(rand() % 10);
+void initMat(int row, int col, float* mat) {
+    for (int r = 0; r < row; r++) {
+        for (int c = 0; c < col; c++) {
+            mat[r * col + c] = (float)(rand() % 10);
         }
     }
 }
-
 
 int main(int argc, char** argv) {
     bool csv = bench::takeFlag(argc, argv, "--csv");
@@ -59,18 +47,18 @@ int main(int argc, char** argv) {
     } else {
         bx = std::stoi(argv[1]);
         by = std::stoi(argv[2]);
-        m = std::stoi(argv[3]);
-        n = std::stoi(argv[4]);
-        k = std::stoi(argv[5]);
+        m  = std::stoi(argv[3]);
+        n  = std::stoi(argv[4]);
+        k  = std::stoi(argv[5]);
     }
 
-    size_t size_a=sizeof(float)*m*k;
-    size_t size_b=sizeof(float)*k*n;
-    size_t size_c=sizeof(float)*m*n;
+    size_t size_a = sizeof(float) * m * k;
+    size_t size_b = sizeof(float) * k * n;
+    size_t size_c = sizeof(float) * m * n;
 
-    float *h_a=(float *)malloc(size_a);
-    float *h_b=(float *)malloc(size_b);
-    float *h_c=(float *)malloc(size_c);
+    float* h_a = (float*)malloc(size_a);
+    float* h_b = (float*)malloc(size_b);
+    float* h_c = (float*)malloc(size_c);
 
     initMat(m, k, h_a);
     initMat(k, n, h_b);
@@ -87,25 +75,24 @@ int main(int argc, char** argv) {
     CHECK_CUDA_ERROR(cudaEventCreate(&kernelStart));
     CHECK_CUDA_ERROR(cudaEventCreate(&kernelEnd));
 
-
     dim3 threadsPerBlock(bx, by);
-    dim3 blocksPerGrid((bx+n-1)/bx, (by+m-1)/by);
+    dim3 blocksPerGrid((bx + n - 1) / bx, (by + m - 1) / by);
 
     GemmReport rep("naive_gemm_swapped", m, n, k, REPS);
     rep.setLaunch(blocksPerGrid, threadsPerBlock);
     int variant = rep.addVariant("swapped");
 
-    for (int i=0; i<=REPS; i++) {
+    for (int i = 0; i <= REPS; i++) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
         naiveGemm<<<blocksPerGrid, threadsPerBlock>>>(m, n, k, d_a, d_b, d_c);
         CHECK_LAST_CUDA_ERROR();
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));
 
-        float kernelTime=0.0;
+        float kernelTime = 0.0;
         CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, kernelStart, kernelEnd));
         // i == 0 is the warm-up: verified, then thrown away.
-        if (i==0) {
+        if (i == 0) {
             CHECK_CUDA_ERROR(cudaMemcpy(h_c, d_c, size_c, cudaMemcpyDeviceToHost));
             rep.setCheck(variant, gemmCheckCpu(m, n, k, h_a, h_b, h_c));
         } else {
