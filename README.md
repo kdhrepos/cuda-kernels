@@ -9,7 +9,7 @@ and throughput. (Draft)
 |---|---|
 | `intro/` | device-query, divergence, matadd, vecadd |
 | `gemm/` | naive, tiled, register-tiling and tensor-core GEMM, raced against cuBLAS |
-| `memory-access/` | chase, stride, transfer, transpose |
+| `memory-access/` | p-chase, stride, transfer, transpose |
 | `primitives/` | histogram, reduction, scan |
 | `llm-inference/` | decoder, graph-launch, normalization, quantized-gemv |
 | `common/` | shared headers and build settings (`common.mk`); see [common/README.md](common/README.md) |
@@ -49,9 +49,7 @@ tools/sweep.py gemm               # one group
 tools/sweep.py gemm/02-tiled      # one kernel
 ```
 
-Block-shape comparison for the naive GEMM: `gemm/01-naive/sweep_block.sh`.
 
 ## TODO
 
 - GEMM performance table per version
-- Fill in per-directory descriptions

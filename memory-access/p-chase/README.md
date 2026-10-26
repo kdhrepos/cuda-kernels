@@ -24,7 +24,6 @@ cycles/load = elapsed SM cycles ÷ 2^18 loads.
 | Array size | cycles/load | Notes |
 | ---: | ---: | --- |
 | 4 – 64 KB | 38.9 | each load depends on the previous one, so the time per load is the full latency of the level that the array fits in |
-| 128 KB | 154 | only part of the array fits in L1 |
-| 256 KB – 2 MB | 256.5 | |
-| 4 MB | 256 | |
-| 8 – 64 MB | 525 | |
+| 128 KB | 154 | only part of the array fits in L1 cache hits in the L1 cache |
+| 256 KB – 4 MB | 256 | walks down to L2 cache |
+| 8 – 64 MB | 525 | walks down to global memory |

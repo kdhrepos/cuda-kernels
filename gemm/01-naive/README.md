@@ -2,7 +2,7 @@
 
 `float` matrix multiply C = A × B (row-major), one thread per element of C, every
 operand read straight from global memory. `naive_gemm_swapped` is the same kernel
-but the thead block's x mapped to rows of C instead of columns.
+but the thread block's x mapped to rows of C instead of columns.
 
 | Variant | How |
 | --- | --- |
@@ -28,15 +28,15 @@ GFLOPS = 2×M×N×K ÷ (kernel time).
 
 | Block (bx × by) | naive GFLOPS | vs 16x16 | swapped GFLOPS | naive ÷ swapped | Why |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 1x256 | 299 | 0.13 | 1,210 | 0.25 | a warp reads less than a full 32-byte sector per row |
-| 2x128 | 592 | 0.26 | 2,220 | 0.27 | a warp reads less than a full 32-byte sector per row |
-| 4x64 | 1,090 | 0.48 | 1,860 | 0.58 | a warp reads less than a full 32-byte sector per row |
+| 1x256 | 299 | 0.13 | 1,210 | 0.25 | bx < 8: a warp reads less than a full 32-byte sector per row |
+| 2x128 | 592 | 0.26 | 2,220 | 0.27 | |
+| 4x64 | 1,090 | 0.48 | 1,860 | 0.58 | |
 | 8x32 | 1,860 | 0.82 | 1,100 | 1.69 | |
-| 16x16 | 2,260 | 1.00 | 588 | 3.84 | per k step a block needs bx + by distinct values (16 + 16 = 32); 256x1 needs 1 + 256 = 257 for the same work |
-| 32x8 | 2,250 | 0.99 | 280 | 8.02 | swapped: neighbouring threads read different rows of A, K × 4 bytes apart |
+| 16x16 | 2,260 | 1.00 | 588 | 3.84 | per k step a block needs bx + by distinct values (16 + 16 = 32) |
+| 32x8 | 2,250 | 0.99 | 280 | 8.02 | |
 | 64x4 | 1,740 | 0.77 | 246 | 7.06 | |
 | 128x2 | 918 | 0.41 | 116 | 7.92 | |
-| 256x1 | 515 | 0.23 | 50.9 | 10.13 | |
+| 256x1 | 515 | 0.23 | 50.9 | 10.13 | needs 1 + 256 = 257 distinct values per k step for the same work |
 | 8x8 | 1,830 | 0.81 | 966 | 1.90 | |
 | 32x32 | 2,080 | 0.92 | 303 | 6.84 | |
 

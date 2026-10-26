@@ -1,6 +1,6 @@
 # divergence
 
-Kernels that do the same FMA work (n = 2^22 threads, 5000 FMAs each) but each thread walks through difference code block to show the cost of warp divergence.
+Kernels that do the same FMA work (n = 2^22 threads, 5000 FMAs each) but each thread takes a different code path, to show the cost of warp divergence.
 
 | Variant | How |
 | --- | --- |
@@ -28,7 +28,7 @@ vs warp-div = (kernel time) ÷ (warp-div time) (k = 1 run, 1.42 ms); higher is s
 | --- | ---: | ---: | --- |
 | warp-div | 1.42 | 1.00 | same work as thread-div; splitting between warps runs one path |
 | thread-div | 2.83 | 1.99 | same work as warp-div; splitting inside a warp runs both paths |
-| vecadd | 0.0637 | 0.04 | memory-bound, and the compiler turns the short branch into predicated instructions, so the extra work hides behind memory latency |
+| vecadd | 0.0637 | | memory-bound, and the compiler turns the short branch into predicated instructions, so the extra work hides behind memory latency |
 | k-div, k = 1 | 1.43 | 1.01 | a warp runs each distinct path in turn, so time grows with k |
 | k-div, k = 2 | 2.84 | 2.00 | |
 | k-div, k = 4 | 5.38 | 3.79 | |

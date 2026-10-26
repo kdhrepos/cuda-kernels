@@ -1,8 +1,7 @@
 #!/bin/bash
 # Naive GEMM and its swapped mapping:
 #   size  : 16x16 blocks, four sizes (naive only)
-#   block : 2000x2100x1900, eleven block shapes (both binaries)
-#   4096  : 4096^3, 16x16 blocks (both binaries)
+#   block : 4096^3, eleven block shapes (both binaries)
 # bx,by columns are added in front of every row, since the CSV does not carry them.
 # Prints CSV on stdout; tools/sweep.py collects it into results/. Edit the
 # arguments here to change what gets measured.
@@ -21,8 +20,4 @@ for shape in 1x256 2x128 4x64 8x32 16x16 32x8 64x4 128x2 256x1 8x8 32x32; do
     for bin in naive_gemm naive_gemm_swapped; do
         run $bin ${shape%x*} ${shape#*x} 4096 4096 4096
     done
-done
-
-for bin in naive_gemm naive_gemm_swapped; do
-    run $bin 16 16 4096 4096 4096
 done

@@ -24,7 +24,7 @@ Each block's partial sum is checked against the CPU.
 
 ## Result
 
-RTX 3090, N ≈ 2^26 (268 MB), kernel time only, 1 warm-up + 10 runs.
+RTX 3090, N = 2^26 (268 MB), kernel time only, 1 warm-up + 10 runs.
 
 GB/s = (N × 4 bytes) ÷ kernel time.
 
@@ -34,6 +34,6 @@ GB/s = (N × 4 bytes) ÷ kernel time.
 | sequential | 326 | 1.62 | active threads packed into the first warps |
 | warp-shuffle | 636 | 3.17 | 9 block barriers → 1, so blocks finish sooner and new loads start |
 
-For reference, a plain sequential read on this GPU reaches 826 GB/s
-([`memory-access/stride`](../../memory-access/stride)). Warp-shuffle stops at 75%
+For reference, a plain sequential read on this GPU reaches 824 GB/s
+([`memory-access/stride`](../../memory-access/stride)). Warp-shuffle stops at 77 %
 of that because each thread issues only one 4-byte load.

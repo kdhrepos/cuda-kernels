@@ -29,4 +29,8 @@ GB/s = bytes the kernel must read ÷ kernel time.
 | Variant | ms | GB/s | vs fp16 | Notes |
 | --- | ---: | ---: | ---: | --- |
 | fp16 | 0.0421 | 798 | 1.00 | |
-| int8 | 0.0225 | 747 | 1.87 | half the bytes of W at about the same bandwidth, so close to the ×2.00 byte ratio. |
+| int8 | 0.0225 | 747 | 1.87 | half the bytes of W at about the same bandwidth, so close to the ×2.00 byte ratio |
+
+Accuracy cost of INT8: compared with the output computed from the original FP16 weights,
+the INT8 output vector is off by 0.85 % of its own size, i.e.
+‖y_int8 − y_fp16‖ ÷ ‖y_fp16‖ = 0.85 % (vector length = square root of the sum of squares).

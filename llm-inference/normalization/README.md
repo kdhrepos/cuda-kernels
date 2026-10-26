@@ -1,15 +1,13 @@
 # normalization
 
-Two row-wise kernels with one 256-thread block per row. Sizes are fixed in the source.
-softmax turns a `float` [2048 × 32768] into row probabilities. 
-
-RMSNorm turns a
-`float` [16384 × 4096] into x ÷ rms(x) × gamma. Each kernel is implemented as unfused and fused version.
+Two row-wise kernels with one 256-thread block per row; sizes are fixed in the source.
+softmax turns a `float` [2048 × 32768] into row probabilities, and RMSNorm turns a
+`float` [16384 × 4096] into x ÷ rms(x) × gamma. Each comes in unfused and fused versions.
 
 | Variant | How |
 | --- | --- |
 | softmax unfused | separate max, sum and normalize kernels |
-| softmax fused3 | one kernel, still three kernel passes over x |
+| softmax fused3 | one kernel, still three passes over x |
 | softmax online | running max and sum in one pass, then normalize |
 | rmsnorm unfused | separate sum-of-squares and normalize kernels |
 | rmsnorm fused | one kernel, each thread keeps its 16 values in registers |

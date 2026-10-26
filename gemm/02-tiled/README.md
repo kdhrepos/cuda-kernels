@@ -2,7 +2,7 @@
 
 `float` matrix multiply C = A × B, 4096³. Each block loads TILE × TILE tiles of A
 and B into shared memory and every thread reuses them for TILE multiply-adds
-before the next tile. The value of TILE is 16 in default.
+before the next tile. TILE defaults to 16.
 
 ## Run
 
