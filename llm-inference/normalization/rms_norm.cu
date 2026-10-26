@@ -18,8 +18,6 @@
 #define REPS 10
 #endif
 
-#define CK(call) CHECK_CUDA_ERROR(call)
-
 constexpr int    M     = 16384;   // rows (tokens)
 constexpr int    N     = 4096;    // row length (hidden size, Llama-7B) -> 16 KB per row
 constexpr int    BLOCK = 256;     // one block per row, so grid = M
@@ -157,16 +155,16 @@ __global__ void k_rmsnorm_fused(const float* x, const float* gamma, float* y) {
 template <class F>
 static std::vector<float> time_ms(F launch, int warm = 3, int reps = REPS) {
     cudaEvent_t a, b;
-    CK(cudaEventCreate(&a)); CK(cudaEventCreate(&b));
+    CHECK_CUDA_ERROR(cudaEventCreate(&a)); CHECK_CUDA_ERROR(cudaEventCreate(&b));
     for (int i = 0; i < warm; ++i) launch();
-    CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
+    CHECK_CUDA_ERROR(cudaGetLastError()); CHECK_CUDA_ERROR(cudaDeviceSynchronize());
     std::vector<float> t(reps);
     for (int i = 0; i < reps; ++i) {
-        CK(cudaEventRecord(a)); launch(); CK(cudaEventRecord(b));
-        CK(cudaEventSynchronize(b)); CK(cudaEventElapsedTime(&t[i], a, b));
+        CHECK_CUDA_ERROR(cudaEventRecord(a)); launch(); CHECK_CUDA_ERROR(cudaEventRecord(b));
+        CHECK_CUDA_ERROR(cudaEventSynchronize(b)); CHECK_CUDA_ERROR(cudaEventElapsedTime(&t[i], a, b));
     }
-    CK(cudaGetLastError());
-    CK(cudaEventDestroy(a)); CK(cudaEventDestroy(b));
+    CHECK_CUDA_ERROR(cudaGetLastError());
+    CHECK_CUDA_ERROR(cudaEventDestroy(a)); CHECK_CUDA_ERROR(cudaEventDestroy(b));
     return t;
 }
 
@@ -189,12 +187,12 @@ int main(int argc, char** argv) {
     }
 
     float *dx, *dg, *dy, *dinv;
-    CK(cudaMalloc(&dx, bytes)); 
-    CK(cudaMalloc(&dy, bytes));
-    CK(cudaMalloc(&dg, N * sizeof(float))); 
-    CK(cudaMalloc(&dinv, M * sizeof(float)));
-    CK(cudaMemcpy(dx, hx.data(), bytes, cudaMemcpyHostToDevice));
-    CK(cudaMemcpy(dg, hg.data(), N * sizeof(float), cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMalloc(&dx, bytes)); 
+    CHECK_CUDA_ERROR(cudaMalloc(&dy, bytes));
+    CHECK_CUDA_ERROR(cudaMalloc(&dg, N * sizeof(float))); 
+    CHECK_CUDA_ERROR(cudaMalloc(&dinv, M * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMemcpy(dx, hx.data(), bytes, cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMemcpy(dg, hg.data(), N * sizeof(float), cudaMemcpyHostToDevice));
 
     KernelReport rep("rmsnorm", REPS, 8);
     rep.addConfig("shape", "M=" + std::to_string(M) + " N=" + std::to_string(N)
@@ -212,11 +210,11 @@ int main(int argc, char** argv) {
     rep.setShowMedian(true);   // the median this harness used to headline
     bool firstVariant = true;
     auto run = [&](const char* name, auto launch) {
-        CK(cudaMemset(dy, 0xFF, bytes));     // fill with NaN so a stale result cannot pass
+        CHECK_CUDA_ERROR(cudaMemset(dy, 0xFF, bytes));     // fill with NaN so a stale result cannot pass
         launch();
-        CK(cudaGetLastError()); 
-        CK(cudaDeviceSynchronize());
-        CK(cudaMemcpy(hy.data(), dy, bytes, cudaMemcpyDeviceToHost));
+        CHECK_CUDA_ERROR(cudaGetLastError()); 
+        CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+        CHECK_CUDA_ERROR(cudaMemcpy(hy.data(), dy, bytes, cudaMemcpyDeviceToHost));
         double maxerr = 0; size_t bad = 0, first = 0;
         for (size_t i = 0; i < elems; ++i) {
             double e = fabs((double)hy[i] - ref[i]) / std::max(fabs((double)ref[i]), 1e-6);
@@ -244,6 +242,6 @@ int main(int argc, char** argv) {
 
     rep.print(csv);
 
-    CK(cudaFree(dx)); CK(cudaFree(dy)); CK(cudaFree(dg)); CK(cudaFree(dinv));
+    CHECK_CUDA_ERROR(cudaFree(dx)); CHECK_CUDA_ERROR(cudaFree(dy)); CHECK_CUDA_ERROR(cudaFree(dg)); CHECK_CUDA_ERROR(cudaFree(dinv));
     return rep.passed() ? 0 : 1;
 }

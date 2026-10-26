@@ -19,8 +19,6 @@
 #define REPS 10
 #endif
 
-#define CHECK(call) CHECK_CUDA_ERROR(call)
-
 constexpr int ROWS   = 4096;
 constexpr int COLS   = 4096;
 constexpr int WARMUP = 1;
@@ -184,20 +182,20 @@ template <typename F>
 float time_ms(F run)
 {
     cudaEvent_t start, stop;
-    CHECK(cudaEventCreate(&start));
-    CHECK(cudaEventCreate(&stop));
+    CHECK_CUDA_ERROR(cudaEventCreate(&start));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stop));
     for (int i = 0; i < WARMUP; ++i) run(i);
-    CHECK(cudaGetLastError());
-    CHECK(cudaDeviceSynchronize());
-    CHECK(cudaEventRecord(start));
+    CHECK_CUDA_ERROR(cudaGetLastError());
+    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    CHECK_CUDA_ERROR(cudaEventRecord(start));
     for (int i = 0; i < REPS; ++i) run(i);
-    CHECK(cudaEventRecord(stop));
-    CHECK(cudaEventSynchronize(stop));
-    CHECK(cudaGetLastError());
+    CHECK_CUDA_ERROR(cudaEventRecord(stop));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stop));
+    CHECK_CUDA_ERROR(cudaGetLastError());
     float ms = 0.f;
-    CHECK(cudaEventElapsedTime(&ms, start, stop));
-    CHECK(cudaEventDestroy(start));
-    CHECK(cudaEventDestroy(stop));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&ms, start, stop));
+    CHECK_CUDA_ERROR(cudaEventDestroy(start));
+    CHECK_CUDA_ERROR(cudaEventDestroy(stop));
     return ms / REPS;
 }
 
@@ -275,33 +273,33 @@ int main(int argc, char** argv)
 
     // ---- 4. GPU memory (NBUF copies each of W and Wq) ----
     __half *dW, *dx; int8_t* dWq; float *dscale, *dy;
-    CHECK(cudaMalloc(&dW,  NBUF * n * sizeof(__half)));
-    CHECK(cudaMalloc(&dWq, NBUF * n * sizeof(int8_t)));
-    CHECK(cudaMalloc(&dscale, ROWS * sizeof(float)));
-    CHECK(cudaMalloc(&dx, COLS * sizeof(__half)));
-    CHECK(cudaMalloc(&dy, ROWS * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dW,  NBUF * n * sizeof(__half)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dWq, NBUF * n * sizeof(int8_t)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dscale, ROWS * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dx, COLS * sizeof(__half)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dy, ROWS * sizeof(float)));
     for (int b = 0; b < NBUF; ++b) {
-        CHECK(cudaMemcpy(dW  + b * n, hW.data(),  n * sizeof(__half), cudaMemcpyHostToDevice));
-        CHECK(cudaMemcpy(dWq + b * n, hWq.data(), n * sizeof(int8_t), cudaMemcpyHostToDevice));
+        CHECK_CUDA_ERROR(cudaMemcpy(dW  + b * n, hW.data(),  n * sizeof(__half), cudaMemcpyHostToDevice));
+        CHECK_CUDA_ERROR(cudaMemcpy(dWq + b * n, hWq.data(), n * sizeof(int8_t), cudaMemcpyHostToDevice));
     }
-    CHECK(cudaMemcpy(dscale, hscale.data(), ROWS * sizeof(float), cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dx, hx.data(), COLS * sizeof(__half), cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMemcpy(dscale, hscale.data(), ROWS * sizeof(float), cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMemcpy(dx, hx.data(), COLS * sizeof(__half), cudaMemcpyHostToDevice));
 
     std::vector<float> hy(ROWS);
 
     // ---- 5. correctness: fill y with 0xFF (NaN) and run once, so an unwritten row shows up ----
-    CHECK(cudaMemset(dy, 0xFF, ROWS * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMemset(dy, 0xFF, ROWS * sizeof(float)));
     launch_fp16(dW, dx, dy);
-    CHECK(cudaGetLastError());
-    CHECK(cudaDeviceSynchronize());
-    CHECK(cudaMemcpy(hy.data(), dy, ROWS * sizeof(float), cudaMemcpyDeviceToHost));
+    CHECK_CUDA_ERROR(cudaGetLastError());
+    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    CHECK_CUDA_ERROR(cudaMemcpy(hy.data(), dy, ROWS * sizeof(float), cudaMemcpyDeviceToHost));
     ErrorStats e_fp16 = compare(hy, y_fp16_ref);
 
-    CHECK(cudaMemset(dy, 0xFF, ROWS * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMemset(dy, 0xFF, ROWS * sizeof(float)));
     launch_int8(dWq, dscale, dx, dy);
-    CHECK(cudaGetLastError());
-    CHECK(cudaDeviceSynchronize());
-    CHECK(cudaMemcpy(hy.data(), dy, ROWS * sizeof(float), cudaMemcpyDeviceToHost));
+    CHECK_CUDA_ERROR(cudaGetLastError());
+    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    CHECK_CUDA_ERROR(cudaMemcpy(hy.data(), dy, ROWS * sizeof(float), cudaMemcpyDeviceToHost));
     ErrorStats e_int8 = compare(hy, y_deq_ref);   // did the kernel compute the same expression?
     ErrorStats e_quant = compare(hy, y_fp16_ref); // output error introduced by quantization
     ErrorStats e_quant_cpu = compare(y_deq_ref, y_fp16_ref); // the same error seen on the CPU; should match
@@ -358,7 +356,7 @@ int main(int argc, char** argv)
         printf("   CPU 계산  : 상대 L2 %.3e, max abs %.3e\n", e_quant_cpu.rel_l2, e_quant_cpu.max_abs);
     }
 
-    CHECK(cudaFree(dW)); CHECK(cudaFree(dWq)); CHECK(cudaFree(dscale));
-    CHECK(cudaFree(dx)); CHECK(cudaFree(dy));
+    CHECK_CUDA_ERROR(cudaFree(dW)); CHECK_CUDA_ERROR(cudaFree(dWq)); CHECK_CUDA_ERROR(cudaFree(dscale));
+    CHECK_CUDA_ERROR(cudaFree(dx)); CHECK_CUDA_ERROR(cudaFree(dy));
     return rep.passed() ? 0 : 1;
 }

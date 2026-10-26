@@ -21,8 +21,6 @@
 #define REPS 10
 #endif
 
-#define CHECK(call) CHECK_CUDA_ERROR(call)
-
 constexpr int NUM_HEADS  = 32;   // Llama-2-7B sizing
 constexpr int HEAD_DIM   = 128;
 constexpr int MAX_SPLITS = 64;   // cap on v2 splits, used to size the workspace
@@ -432,20 +430,20 @@ template <typename F>
 static float time_ms(F run, int iters)
 {
     cudaEvent_t start, stop;
-    CHECK(cudaEventCreate(&start));
-    CHECK(cudaEventCreate(&stop));
+    CHECK_CUDA_ERROR(cudaEventCreate(&start));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stop));
     run();
-    CHECK(cudaGetLastError());
-    CHECK(cudaDeviceSynchronize());
-    CHECK(cudaEventRecord(start));
+    CHECK_CUDA_ERROR(cudaGetLastError());
+    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+    CHECK_CUDA_ERROR(cudaEventRecord(start));
     for (int i = 0; i < iters; ++i) run();
-    CHECK(cudaEventRecord(stop));
-    CHECK(cudaEventSynchronize(stop));
-    CHECK(cudaGetLastError());
+    CHECK_CUDA_ERROR(cudaEventRecord(stop));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stop));
+    CHECK_CUDA_ERROR(cudaGetLastError());
     float ms = 0.0f;
-    CHECK(cudaEventElapsedTime(&ms, start, stop));
-    CHECK(cudaEventDestroy(start));
-    CHECK(cudaEventDestroy(stop));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&ms, start, stop));
+    CHECK_CUDA_ERROR(cudaEventDestroy(start));
+    CHECK_CUDA_ERROR(cudaEventDestroy(stop));
     return ms / iters;
 }
 
@@ -467,7 +465,7 @@ static void addRow(KernelReport& rep, int v, int colErr,
     rep.setBytes(v, bytes);
     rep.addSample(v, ms);
     rep.setCell(v, colErr, err);
-    rep.setCheck(v, err <= tol ? 0 : 1);
+    rep.CHECK_CUDA_ERROR(v, err <= tol ? 0 : 1);
 }
 
 int main(int argc, char** argv)
@@ -499,16 +497,16 @@ int main(int argc, char** argv)
 
     __half *dW, *dx;
     float* dy;
-    CHECK(cudaMalloc(&dW, nW * sizeof(__half)));
-    CHECK(cudaMalloc(&dx, cols * sizeof(__half)));
-    CHECK(cudaMalloc(&dy, rows * sizeof(float)));
-    CHECK(cudaMemcpy(dW, hW.data(), nW * sizeof(__half), cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dx, hx.data(), cols * sizeof(__half), cudaMemcpyHostToDevice));
-    CHECK(cudaMemset(dy, 0, rows * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dW, nW * sizeof(__half)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dx, cols * sizeof(__half)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dy, rows * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMemcpy(dW, hW.data(), nW * sizeof(__half), cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMemcpy(dx, hx.data(), cols * sizeof(__half), cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMemset(dy, 0, rows * sizeof(float)));
 
     float ms_gemv = time_ms([&] { launch_gemv(dW, dx, dy, rows, cols); }, REPS);
     std::vector<float> hy(rows);
-    CHECK(cudaMemcpy(hy.data(), dy, rows * sizeof(float), cudaMemcpyDeviceToHost));
+    CHECK_CUDA_ERROR(cudaMemcpy(hy.data(), dy, rows * sizeof(float), cudaMemcpyDeviceToHost));
     double bytes_gemv = (double)nW * 2 + (double)cols * 2 + (double)rows * 4;
 
     // ---------------- attention ----------------
@@ -541,26 +539,26 @@ int main(int argc, char** argv)
 
     __half *dq, *dK, *dV;
     float *dout, *dws;
-    CHECK(cudaMalloc(&dq, nQ * sizeof(__half)));
-    CHECK(cudaMalloc(&dK, nKV * sizeof(__half)));
-    CHECK(cudaMalloc(&dV, nKV * sizeof(__half)));
-    CHECK(cudaMalloc(&dout, nQ * sizeof(float)));
-    CHECK(cudaMalloc(&dws, (size_t)NUM_HEADS * MAX_SPLITS * (HEAD_DIM + 2) * sizeof(float)));
-    CHECK(cudaMemcpy(dq, hq.data(), nQ * sizeof(__half), cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dK, hK.data(), nKV * sizeof(__half), cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dV, hV.data(), nKV * sizeof(__half), cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMalloc(&dq, nQ * sizeof(__half)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dK, nKV * sizeof(__half)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dV, nKV * sizeof(__half)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dout, nQ * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMalloc(&dws, (size_t)NUM_HEADS * MAX_SPLITS * (HEAD_DIM + 2) * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMemcpy(dq, hq.data(), nQ * sizeof(__half), cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMemcpy(dK, hK.data(), nKV * sizeof(__half), cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMemcpy(dV, hV.data(), nKV * sizeof(__half), cudaMemcpyHostToDevice));
 
     double bytes_attn = 2.0 * nKV * 2 + (double)nQ * 2 + (double)nQ * 4;   // K + V + q + out
     std::vector<float> hout(nQ);
 
-    CHECK(cudaMemset(dout, 0, nQ * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMemset(dout, 0, nQ * sizeof(float)));
     float ms_v1 = time_ms([&] { launch_attn_v1(dq, dK, dV, dout, T, scale); }, REPS);
-    CHECK(cudaMemcpy(hout.data(), dout, nQ * sizeof(float), cudaMemcpyDeviceToHost));
+    CHECK_CUDA_ERROR(cudaMemcpy(hout.data(), dout, nQ * sizeof(float), cudaMemcpyDeviceToHost));
     double err_v1 = max_abs_err(hout, ref_out);
 
-    CHECK(cudaMemset(dout, 0, nQ * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMemset(dout, 0, nQ * sizeof(float)));
     float ms_v2 = time_ms([&] { launch_attn_v2(dq, dK, dV, dout, dws, T, num_splits, scale); }, REPS);
-    CHECK(cudaMemcpy(hout.data(), dout, nQ * sizeof(float), cudaMemcpyDeviceToHost));
+    CHECK_CUDA_ERROR(cudaMemcpy(hout.data(), dout, nQ * sizeof(float), cudaMemcpyDeviceToHost));
     double err_v2 = max_abs_err(hout, ref_out);
 
     // ---------------- report ----------------
@@ -591,8 +589,8 @@ int main(int argc, char** argv)
     attnRep.setBaseline(vV1);
     attnRep.print(csv);
 
-    CHECK(cudaFree(dW)); CHECK(cudaFree(dx)); CHECK(cudaFree(dy));
-    CHECK(cudaFree(dq)); CHECK(cudaFree(dK)); CHECK(cudaFree(dV));
-    CHECK(cudaFree(dout)); CHECK(cudaFree(dws));
+    CHECK_CUDA_ERROR(cudaFree(dW)); CHECK_CUDA_ERROR(cudaFree(dx)); CHECK_CUDA_ERROR(cudaFree(dy));
+    CHECK_CUDA_ERROR(cudaFree(dq)); CHECK_CUDA_ERROR(cudaFree(dK)); CHECK_CUDA_ERROR(cudaFree(dV));
+    CHECK_CUDA_ERROR(cudaFree(dout)); CHECK_CUDA_ERROR(cudaFree(dws));
     return (gemvRep.passed() && attnRep.passed()) ? 0 : 1;
 }

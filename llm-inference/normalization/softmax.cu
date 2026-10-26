@@ -18,8 +18,6 @@
 #define REPS 10
 #endif
 
-#define CK(call) CHECK_CUDA_ERROR(call)
-
 constexpr int    M     = 2048;    // rows
 constexpr int    N     = 32768;   // row length (about an LLM vocab) -> 128 KB per row
 constexpr int    BLOCK = 256;     // one block per row, so grid = M
@@ -315,16 +313,16 @@ __global__ void k_softmax_online(
 template <class F>
 static std::vector<float> time_ms(F launch, int warm = 3, int reps = REPS) {
     cudaEvent_t a, b;
-    CK(cudaEventCreate(&a)); CK(cudaEventCreate(&b));
+    CHECK_CUDA_ERROR(cudaEventCreate(&a)); CHECK_CUDA_ERROR(cudaEventCreate(&b));
     for (int i = 0; i < warm; ++i) launch();
-    CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
+    CHECK_CUDA_ERROR(cudaGetLastError()); CHECK_CUDA_ERROR(cudaDeviceSynchronize());
     std::vector<float> t(reps);
     for (int i = 0; i < reps; ++i) {
-        CK(cudaEventRecord(a)); launch(); CK(cudaEventRecord(b));
-        CK(cudaEventSynchronize(b)); CK(cudaEventElapsedTime(&t[i], a, b));
+        CHECK_CUDA_ERROR(cudaEventRecord(a)); launch(); CHECK_CUDA_ERROR(cudaEventRecord(b));
+        CHECK_CUDA_ERROR(cudaEventSynchronize(b)); CHECK_CUDA_ERROR(cudaEventElapsedTime(&t[i], a, b));
     }
-    CK(cudaGetLastError());
-    CK(cudaEventDestroy(a)); CK(cudaEventDestroy(b));
+    CHECK_CUDA_ERROR(cudaGetLastError());
+    CHECK_CUDA_ERROR(cudaEventDestroy(a)); CHECK_CUDA_ERROR(cudaEventDestroy(b));
     return t;
 }
 
@@ -347,11 +345,11 @@ int main(int argc, char** argv) {
     }
 
     float *dx, *dy, *dmax, *dsum;
-    CK(cudaMalloc(&dx, bytes)); 
-    CK(cudaMalloc(&dy, bytes));
-    CK(cudaMalloc(&dmax, M * sizeof(float))); 
-    CK(cudaMalloc(&dsum, M * sizeof(float)));
-    CK(cudaMemcpy(dx, hx.data(), bytes, cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaMalloc(&dx, bytes)); 
+    CHECK_CUDA_ERROR(cudaMalloc(&dy, bytes));
+    CHECK_CUDA_ERROR(cudaMalloc(&dmax, M * sizeof(float))); 
+    CHECK_CUDA_ERROR(cudaMalloc(&dsum, M * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMemcpy(dx, hx.data(), bytes, cudaMemcpyHostToDevice));
 
     KernelReport rep("softmax", REPS, 8);
     rep.addConfig("shape", "M=" + std::to_string(M) + " N=" + std::to_string(N)
@@ -368,10 +366,10 @@ int main(int argc, char** argv) {
     rep.setShowMedian(true);   // the median this harness used to headline
     bool firstVariant = true;
     auto run = [&](const char* name, auto launch) {
-        CK(cudaMemset(dy, 0xFF, bytes));     // fill with NaN so a stale result cannot pass
+        CHECK_CUDA_ERROR(cudaMemset(dy, 0xFF, bytes));     // fill with NaN so a stale result cannot pass
         launch();
-        CK(cudaGetLastError()); CK(cudaDeviceSynchronize());
-        CK(cudaMemcpy(hy.data(), dy, bytes, cudaMemcpyDeviceToHost));
+        CHECK_CUDA_ERROR(cudaGetLastError()); CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+        CHECK_CUDA_ERROR(cudaMemcpy(hy.data(), dy, bytes, cudaMemcpyDeviceToHost));
         double maxerr = 0; size_t bad = 0, first = 0;
         for (size_t i = 0; i < elems; ++i) {
             double e = fabs((double)hy[i] - ref[i]) / std::max(fabs((double)ref[i]), 1e-6);
@@ -381,7 +379,7 @@ int main(int argc, char** argv) {
         int v = rep.addVariant(name);
         rep.setBytes(v, 2.0 * bytes);
         rep.setCell(v, colErr, maxerr);
-        rep.setCheck(v, (long long)bad);
+        rep.CHECK_CUDA_ERROR(v, (long long)bad);
         if (firstVariant) { rep.setBaseline(v); firstVariant = false; }
 
         std::vector<float> samples = time_ms(launch);
@@ -401,6 +399,6 @@ int main(int argc, char** argv) {
 
     rep.print(csv);
 
-    CK(cudaFree(dx)); CK(cudaFree(dy)); CK(cudaFree(dmax)); CK(cudaFree(dsum));
+    CHECK_CUDA_ERROR(cudaFree(dx)); CHECK_CUDA_ERROR(cudaFree(dy)); CHECK_CUDA_ERROR(cudaFree(dmax)); CHECK_CUDA_ERROR(cudaFree(dsum));
     return rep.passed() ? 0 : 1;
 }
