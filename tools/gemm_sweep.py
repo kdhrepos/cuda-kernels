@@ -65,6 +65,8 @@ def main():
     failures = []
 
     for binary in opt.binaries:
+        if os.path.isfile(binary) and not os.access(binary, os.X_OK):
+            continue        # a glob also picked up a source file or Makefile
         if not os.path.isfile(binary):
             failures.append((binary, "-", "not built"))
             continue
