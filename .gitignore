@@ -28,7 +28,7 @@ llm-inference/graph-launch/graph_launch
 llm-inference/normalization/rms_norm
 llm-inference/normalization/softmax
 llm-inference/quantized-gemv/w8_gemv
-memory-access/chase/chase
+memory-access/p-chase/p_chase
 memory-access/stride/stride
 memory-access/transfer/transfer
 memory-access/transpose/transpose

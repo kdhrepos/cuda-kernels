@@ -16,14 +16,13 @@ BENCH_DIRS := gemm/01-naive \
               gemm/cublas-gemm \
               intro/device-query \
               intro/divergence \
-              intro/gray-to-scale \
               intro/matadd \
               intro/vecadd \
               llm-inference/decoder \
               llm-inference/graph-launch \
               llm-inference/quantized-gemv \
               llm-inference/normalization \
-              memory-access/chase \
+              memory-access/p-chase \
               memory-access/stride \
               memory-access/transfer \
               memory-access/transpose \
