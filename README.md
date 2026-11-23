@@ -3,24 +3,37 @@
 CUDA kernels written from scratch, each with a small benchmark that reports time
 and throughput. (Draft)
 
+## Environment
+
+Results in this repository were measured on:
+
+| | |
+|---|---|
+| GPU | 2× NVIDIA GeForce RTX 3090 (compute capability 8.6, `sm_86`) |
+| CUDA toolkit | 12.3 (nvcc 12.3.52) |
+| NVIDIA driver | 545.23.06 |
+| Host compiler | gcc 9.4.0 |
+| Build | GNU Make 4.2.1, `-O3 -std=c++14 -arch=sm_86` |
+| Python | 3.8.10 |
+
 ## Layout
 
 | Directory | Contents |
 |---|---|
 | `intro/` | device-query, divergence, matadd, vecadd |
-| `gemm/` | naive, tiled, register-tiling and tensor-core GEMM, raced against cuBLAS |
+| `gemm/` | multiple versions of GEMM optimization compared to cuBLAS |
 | `memory-access/` | p-chase, stride, transfer, transpose |
-| `primitives/` | histogram, reduction, scan |
+| `primitives/` | parallel programming algorithms such as histogram, reduction, scan |
 | `llm-inference/` | decoder, graph-launch, normalization, quantized-gemv |
 | `common/` | shared headers and build settings (`common.mk`); see [common/README.md](common/README.md) |
-| `tools/` | `sweep.py`, runs benchmarks over a set of sizes and collects the results |
+| `tools/` | runs benchmarks over a set of sizes and collects the results |
 
 ## Build
 
 ```bash
 make                 # build everything
 make gemm            # build one group
-make ARCH=sm_86      # target another architecture (default sm_80)
+make ARCH=sm_86      # target architecture (default sm_80; the RTX 3090 needs sm_86)
 make clean
 ```
 

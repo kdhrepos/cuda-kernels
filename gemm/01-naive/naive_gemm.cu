@@ -12,7 +12,7 @@
 #define REPS 10
 #endif
 
-__global__ void naiveGemm(int m, int n, int k, float* a, float* b, float* c) {
+__global__ void naive_gemm(int m, int n, int k, float* a, float* b, float* c) {
     // x walks the columns of C and y walks the rows, so threads next to each
     // other in a warp read consecutive elements of a row of B.
     const int row = blockDim.y * blockIdx.y + threadIdx.y;
@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i <= REPS; i++) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
-        naiveGemm<<<blocksPerGrid, threadsPerBlock>>>(m, n, k, d_a, d_b, d_c);
+        naive_gemm<<<blocksPerGrid, threadsPerBlock>>>(m, n, k, d_a, d_b, d_c);
         CHECK_LAST_CUDA_ERROR();
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));

@@ -11,12 +11,16 @@
 gemm/01-naive/naive_gemm
 gemm/01-naive/naive_gemm_swapped
 gemm/02-tiled/tiled_gemm
-gemm/03-register-tiling/thread_tile_1x4_contiguous
-gemm/03-register-tiling/thread_tile_1x4_strided
-gemm/03-register-tiling/thread_tile_4x4
-gemm/03-register-tiling/thread_tile_4x4_transA
-gemm/03-register-tiling/thread_tile_4x4_transA_pad
-gemm/04-tensor-core/tensor_core_gemm_shared
+gemm/03-register-tiling-4x4/thread_tile_1x4_contiguous
+gemm/03-register-tiling-4x4/thread_tile_1x4_strided
+gemm/03-register-tiling-4x4/thread_tile_4x4
+gemm/03-register-tiling-4x4/thread_tile_4x4_transA
+gemm/03-register-tiling-4x4/thread_tile_4x4_transA_pad
+gemm/04-register-tiling-8x8/thread_tile_8x8
+gemm/05-double-buffering/double_buffering
+gemm/06-warp-tiling/warp_tiling
+gemm/06-warp-tiling/bin/
+gemm/tensor-core/tensor_core_gemm_shared
 gemm/cublas-gemm/cublas_sgemm
 intro/device-query/device_query
 intro/divergence/divergence
@@ -44,6 +48,11 @@ fig
 
 # csv files
 *.csv
+
+# ncu reports and profiling dumps
+*.ncu-rep
+prof.txt
+prof_raw.txt
 
 # Editor and OS noise
 .vscode/
