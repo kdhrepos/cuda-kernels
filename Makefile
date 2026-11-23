@@ -11,8 +11,9 @@
 
 BENCH_DIRS := gemm/01-naive \
               gemm/02-tiled \
-              gemm/03-register-tiling \
-              gemm/04-tensor-core \
+              gemm/03-register-tiling-4x4 \
+              gemm/04-register-tiling-8x8 \
+              gemm/tensor-core \
               gemm/cublas-gemm \
               intro/device-query \
               intro/divergence \

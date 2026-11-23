@@ -17,10 +17,6 @@
 #define TILE 16
 #endif
 
-#ifndef TM
-#define TM 4
-#endif
-
 #ifndef TN
 #define TN 4
 #endif
@@ -33,57 +29,44 @@ void initMat(int row, int col, float* mat) {
     }
 }
 
-__global__ void coarsenedGemm(int M, int N, int K, float* A, float* B, float* C) {
-    __shared__ float AsT[TILE][TILE * TM];
+__global__ void thread_tile_1x4_contiguous_gemm(int M, int N, int K, float* A, float* B, float* C) {
+    __shared__ float As[TILE][TILE];
     __shared__ float Bs[TILE][TILE * TN];
 
-    float acc[TM][TN] = {0.0f};
-    float a[TM]       = {0.0f};
-    float b[TN]       = {0.0f};
+    float sum[TN] = {0.0f};
 
     const int ty = threadIdx.y;
     const int tx = threadIdx.x;
 
-    // This block owns TILE*TM rows and TILE*TN columns of C.
-    const int blockRow = blockIdx.y * TILE * TM;
+    // This block owns TILE rows and TILE*TN columns of C.
     const int blockCol = blockIdx.x * TILE * TN;
+    const int row      = blockDim.y * blockIdx.y + ty;  // one row per thread
 
     for (int p = 0; p < gemmTiles(K, TILE); p++) {
         const int kTile = p * TILE;  // first k of this step
 
-        // Load phase. The destination subscripts are swapped against the source
-        // index -- that swap IS the transpose, and it is why the compute phase
-        // below can read a column of A as a row of AsT.
-        for (int j = 0; j < TM; j++)
-            AsT[tx][ty + j * TILE] =
-                gemmLoadOrZero(A, K, blockRow + ty + j * TILE, kTile + tx, M, K);
+        As[ty][tx] = gemmLoadOrZero(A, K, row, kTile + tx, M, K);
 
+        // Load phase: the TN chunks are TILE apart so each chunk is one
+        // coalesced read by the warp, whatever the compute phase does next.
         for (int j = 0; j < TN; j++)
-            Bs[ty][tx + j * TILE] =
-                gemmLoadOrZero(B, N, kTile + ty, blockCol + tx + j * TILE, K, N);
+            Bs[ty][j * TILE + tx] =
+                gemmLoadOrZero(B, N, kTile + ty, blockCol + j * TILE + tx, K, N);
         __syncthreads();
 
-        // Compute phase: a different mapping of the same thread. It owns a
-        // contiguous TM x TN block of C, and thanks to the transpose both a[]
-        // and b[] now come from consecutive shared-memory addresses.
-#pragma unroll
         for (int k = 0; k < TILE; k++) {
-            for (int i = 0; i < TM; i++) a[i] = AsT[k][ty * TM + i];
-            for (int i = 0; i < TN; i++) b[i] = Bs[k][tx * TN + i];
+            const float a = As[ty][k];  // reused from a register across TN
 
-            for (int i = 0; i < TM; i++)
-                for (int j = 0; j < TN; j++) acc[i][j] += a[i] * b[j];
+            // Compute phase: this thread's TN columns sit side by side, so the
+            // shared reads are contiguous. Note this is a different mapping of
+            // tx than the load above used.
+            for (int j = 0; j < TN; j++) sum[j] += a * Bs[k][tx * TN + j];
         }
         __syncthreads();
     }
 
-    // Stores follow the compute mapping, not the load mapping.
-    const int threadRow = blockRow + ty * TM;
-    const int threadCol = blockCol + tx * TN;
-
-    for (int i = 0; i < TM; i++)
-        for (int j = 0; j < TN; j++)
-            gemmStoreIfInside(C, N, threadRow + i, threadCol + j, M, N, acc[i][j]);
+    const int threadCol = blockCol + tx * TN;  // matches the compute mapping
+    for (int j = 0; j < TN; j++) gemmStoreIfInside(C, N, row, threadCol + j, M, N, sum[j]);
 }
 
 int main(int argc, char** argv) {
@@ -123,15 +106,15 @@ int main(int argc, char** argv) {
     CHECK_CUDA_ERROR(cudaEventCreate(&kernelEnd));
 
     dim3 threadsPerBlock(TILE, TILE);
-    dim3 blocksPerGrid((TILE * TN + N - 1) / (TILE * TN), (TILE * TM + M - 1) / (TILE * TM));
+    dim3 blocksPerGrid((TILE * TN + N - 1) / (TILE * TN), (TILE + M - 1) / TILE);
 
-    GemmReport rep("thread_tile_4x4_transA", M, N, K, REPS);
+    GemmReport rep("thread_tile_1x4_contiguous", M, N, K, REPS);
     rep.setLaunch(blocksPerGrid, threadsPerBlock);
-    int variant = rep.addVariant("4x4-transA");
+    int variant = rep.addVariant("reg_tile_1x4_contiguous");
 
     for (int i = 0; i <= REPS; i++) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
-        coarsenedGemm<<<blocksPerGrid, threadsPerBlock>>>(M, N, K, d_a, d_b, d_c);
+        thread_tile_1x4_contiguous_gemm<<<blocksPerGrid, threadsPerBlock>>>(M, N, K, d_a, d_b, d_c);
         CHECK_LAST_CUDA_ERROR();
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));

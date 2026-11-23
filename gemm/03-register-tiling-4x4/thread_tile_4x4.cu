@@ -33,7 +33,7 @@ void initMat(int row, int col, float* mat) {
     }
 }
 
-__global__ void coarsenedGemm(int M, int N, int K, float* A, float* B, float* C) {
+__global__ void thread_tile_4x4_gemm(int M, int N, int K, float* A, float* B, float* C) {
     __shared__ float As[TILE * TM][TILE];
     __shared__ float Bs[TILE][TILE * TN];
 
@@ -56,12 +56,12 @@ __global__ void coarsenedGemm(int M, int N, int K, float* A, float* B, float* C)
         // Load phase: rows walk with stride TILE, so each step is one coalesced
         // read by the warp.
         for (int j = 0; j < TM; j++)
-            As[j * TILE + ty][tx] =
-                gemmLoadOrZero(A, K, blockRow + j * TILE + ty, kTile + tx, M, K);
+            As[j*TILE + ty][tx] =
+                gemmLoadOrZero(A, K, blockRow + j*TILE + ty, kTile + tx, M, K);
 
         for (int j = 0; j < TN; j++)
-            Bs[ty][j * TILE + tx] =
-                gemmLoadOrZero(B, N, kTile + ty, blockCol + j * TILE + tx, K, N);
+            Bs[ty][j*TILE + tx] =
+                gemmLoadOrZero(B, N, kTile + ty, blockCol + j*TILE + tx, K, N);
         __syncthreads();
 
         // Compute phase: a different mapping of the same thread. Here it owns a
@@ -72,7 +72,8 @@ __global__ void coarsenedGemm(int M, int N, int K, float* A, float* B, float* C)
             for (int i = 0; i < TN; i++) b[i] = Bs[k][tx * TN + i];
 
             for (int i = 0; i < TM; i++)
-                for (int j = 0; j < TN; j++) acc[i][j] += a[i] * b[j];
+                for (int j = 0; j < TN; j++) 
+                    acc[i][j] += a[i] * b[j];
         }
         __syncthreads();
     }
@@ -127,11 +128,11 @@ int main(int argc, char** argv) {
 
     GemmReport rep("thread_tile_4x4", M, N, K, REPS);
     rep.setLaunch(blocksPerGrid, threadsPerBlock);
-    int variant = rep.addVariant("4x4");
+    int variant = rep.addVariant("reg_tile_4x4");
 
     for (int i = 0; i <= REPS; i++) {
         CHECK_CUDA_ERROR(cudaEventRecord(kernelStart));
-        coarsenedGemm<<<blocksPerGrid, threadsPerBlock>>>(M, N, K, d_a, d_b, d_c);
+        thread_tile_4x4_gemm<<<blocksPerGrid, threadsPerBlock>>>(M, N, K, d_a, d_b, d_c);
         CHECK_LAST_CUDA_ERROR();
         CHECK_CUDA_ERROR(cudaEventRecord(kernelEnd));
         CHECK_CUDA_ERROR(cudaEventSynchronize(kernelEnd));
