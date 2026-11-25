@@ -61,8 +61,3 @@ tools/sweep.py                    # every run.sh
 tools/sweep.py gemm               # one group
 tools/sweep.py gemm/02-tiled      # one kernel
 ```
-
-
-## TODO
-
-- GEMM performance table per version
